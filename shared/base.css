@@ -1,0 +1,146 @@
+/* Ghost + Lock — shared black & white design system.
+   Rule: black and white only. Big text. Big buttons. One thing per screen. */
+
+:root{
+  --bg:#000;
+  --fg:#fff;
+  --dim:#9a9a9a;        /* muted white */
+  --line:#2a2a2a;       /* hairline */
+  --panel:#0d0d0d;      /* raised black */
+  --panel2:#161616;
+  --danger:#fff;        /* we don't use color; "danger" shown with words + icons */
+  --radius:18px;
+  --tap:64px;           /* minimum touch height */
+  --pad:20px;
+  font-size:18px;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg)}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  min-height:100vh;
+  overscroll-behavior:none;
+}
+button{font-family:inherit}
+a{color:var(--fg)}
+
+/* ---------- layout ---------- */
+/* strict black & white: emoji icons render grayscale everywhere */
+.app,.sheet,.sheet-bg,#toast{filter:grayscale(1)}
+.app{max-width:640px;margin:0 auto;padding:var(--pad) var(--pad) 96px}
+.screen{display:none;animation:fade .18s ease}
+.screen.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.center{min-height:88vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:22px}
+
+/* ---------- top bar ---------- */
+.bar{display:flex;align-items:center;gap:14px;min-height:56px;margin-bottom:8px}
+.bar .back{
+  background:none;border:none;color:var(--fg);font-size:30px;line-height:1;
+  padding:8px 6px;cursor:pointer;min-width:44px;text-align:left
+}
+.bar h1{font-size:26px;margin:0;font-weight:800;letter-spacing:-.02em}
+
+/* ---------- type ---------- */
+.big{font-size:34px;font-weight:800;letter-spacing:-.03em;margin:0}
+.huge{font-size:44px;font-weight:800;letter-spacing:-.04em;margin:0}
+.sub{font-size:19px;color:var(--dim);margin:0}
+.plain{font-size:19px;margin:14px 0}
+.tiny{font-size:15px;color:var(--dim)}
+.count{font-variant-numeric:tabular-nums}
+
+/* ---------- big buttons ---------- */
+.btn{
+  display:flex;align-items:center;gap:16px;width:100%;
+  min-height:var(--tap);padding:18px 20px;margin:12px 0;
+  font-size:21px;font-weight:700;text-align:left;
+  background:var(--panel);color:var(--fg);
+  border:2px solid var(--line);border-radius:var(--radius);
+  cursor:pointer;transition:transform .06s ease, background .15s ease;
+}
+.btn:active{transform:scale(.985);background:var(--panel2)}
+.btn .ico{font-size:30px;width:38px;text-align:center;flex:none}
+.btn .txt{flex:1}
+.btn .arrow{color:var(--dim);font-size:26px}
+.btn .badge{
+  font-size:15px;font-weight:800;background:var(--fg);color:var(--bg);
+  border-radius:999px;padding:2px 12px;min-width:30px;text-align:center
+}
+
+.btn-primary{background:var(--fg);color:var(--bg);border-color:var(--fg);justify-content:center;font-size:22px}
+.btn-primary:active{background:#e6e6e6}
+.btn-outline{background:transparent}
+.btn-row{display:flex;gap:12px}
+.btn-row .btn{margin:12px 0}
+
+/* ---------- cards / list items ---------- */
+.card{
+  background:var(--panel);border:2px solid var(--line);border-radius:var(--radius);
+  padding:18px;margin:14px 0;
+}
+.card h3{margin:0 0 6px;font-size:20px}
+.card p{margin:6px 0;color:var(--dim);font-size:17px}
+
+.item{
+  display:flex;align-items:center;gap:14px;
+  background:var(--panel);border:2px solid var(--line);border-radius:16px;
+  padding:16px;margin:10px 0;color:var(--fg);font-family:inherit;font-size:inherit;
+}
+.item .grow{flex:1;min-width:0}
+.item .grow b{font-size:19px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .grow small{color:var(--dim);font-size:15px}
+
+/* status dot: outline = to do, half = pending, filled = done */
+.dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--fg);flex:none;position:relative}
+.dot.pending::after{content:"";position:absolute;inset:3px;border-radius:50%;
+  background:linear-gradient(90deg,var(--fg) 50%,transparent 50%)}
+.dot.done{background:var(--fg)}
+.dot.done::after{content:"✓";position:absolute;inset:0;color:var(--bg);font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center}
+
+/* ---------- inputs ---------- */
+label{display:block;font-size:17px;color:var(--dim);margin:18px 0 8px}
+input[type=text],input[type=password],input[type=email],input[type=tel],textarea,select{
+  width:100%;min-height:var(--tap);padding:16px;font-size:19px;
+  background:var(--panel);color:var(--fg);
+  border:2px solid var(--line);border-radius:14px;outline:none;
+}
+input:focus,textarea:focus{border-color:var(--fg)}
+textarea{min-height:120px;line-height:1.4;resize:vertical}
+
+/* ---------- misc ---------- */
+.hr{height:2px;background:var(--line);border:0;margin:22px 0}
+.pill{display:inline-block;border:2px solid var(--line);border-radius:999px;padding:4px 12px;font-size:14px;color:var(--dim);margin:4px 6px 0 0}
+.center-note{text-align:center;color:var(--dim);font-size:15px;margin:24px 0}
+.spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* toast */
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(140%);
+  background:var(--fg);color:var(--bg);font-weight:700;font-size:17px;
+  padding:14px 20px;border-radius:14px;max-width:90vw;text-align:center;
+  transition:transform .25s ease;z-index:100;box-shadow:0 8px 30px rgba(255,255,255,.12)
+}
+#toast.show{transform:translateX(-50%) translateY(0)}
+
+/* big glyph */
+.glyph{font-size:84px;line-height:1}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* sheet (bottom modal) */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;z-index:90}
+.sheet-bg.show{display:block}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:91;
+  background:var(--panel);border-top:2px solid var(--line);
+  border-radius:24px 24px 0 0;padding:22px 22px calc(22px + env(safe-area-inset-bottom));
+  max-width:640px;margin:0 auto;transform:translateY(110%);transition:transform .25s ease;
+  max-height:88vh;overflow:auto
+}
+.sheet.show{transform:none}
+.sheet h2{margin:2px 0 10px;font-size:24px}

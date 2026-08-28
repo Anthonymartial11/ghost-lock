@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ghost</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ghost">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/ghost-180.png">
+<link rel="icon" href="../icons/ghost-192.png">
+<link rel="stylesheet" href="../shared/base.css">
+</head>
+<body>
+<div class="app" id="root">
+  <div class="center">
+    <div class="glyph">👻</div>
+    <div class="spinner"></div>
+  </div>
+</div>
+<script src="../shared/owner.js"></script>
+<script src="../shared/vault.js"></script>
+<script src="../shared/auth.js"></script>
+<script src="../shared/ui.js"></script>
+<script src="../shared/shell.js"></script>
+<script src="../shared/data-brokers.js"></script>
+<script src="../shared/delete-accounts.js"></script>
+<script src="../shared/tools.js"></script>
+<script src="app.js"></script>
+<script>
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>

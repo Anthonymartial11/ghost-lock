@@ -10,30 +10,85 @@
 </head>
 <body>
 <div class="app">
-  <div style="text-align:center;margin:40px 0 10px">
-    <p class="huge">Ghost + Lock</p>
-    <p class="sub">Two apps. One job: make you hard to find and hard to hit.</p>
+
+  <!-- GATE: nothing renders past this without the owner code -->
+  <div id="gate">
+    <div class="center" style="min-height:80vh">
+      <svg viewBox="0 0 1024 1024" width="96" height="96" aria-hidden="true"><path d="M372 470 L 372 372 C 372 294, 434 232, 512 232 C 590 232, 652 294, 652 372 L 652 470" fill="none" stroke="#fff" stroke-width="44" stroke-linecap="round"/><rect x="316" y="470" width="392" height="322" rx="46" fill="none" stroke="#fff" stroke-width="44"/><circle cx="512" cy="600" r="36" fill="#fff"/><rect x="494" y="600" width="36" height="110" rx="18" fill="#fff"/></svg>
+      <p class="huge" style="margin:0">Private</p>
+      <p class="sub">This system belongs to its owner.</p>
+      <div style="width:100%;max-width:420px">
+        <input type="password" id="code" placeholder="Owner code" autocomplete="off" autocapitalize="characters">
+        <button class="btn btn-primary" id="enter" style="justify-content:center">Enter</button>
+        <p class="center-note" id="msg"></p>
+      </div>
+    </div>
   </div>
 
-  <a href="ghost/" style="text-decoration:none">
-    <div class="btn"><span class="ico"><svg viewBox="0 0 1024 1024" width="34" height="34" aria-hidden="true"><path d="M512 208 C 372 208, 300 316, 300 452 L 300 792 C 300 812, 322 822, 338 808 L 392 762 C 404 752, 420 752, 432 762 L 486 808 C 498 818, 514 818, 526 808 L 580 762 C 592 752, 608 752, 620 762 L 674 808 C 690 822, 712 812, 712 792 L 712 452 C 712 316, 640 208, 512 208 Z" fill="none" stroke="#fff" stroke-width="44" stroke-linejoin="round"/><circle cx="440" cy="452" r="40" fill="#fff"/><circle cx="584" cy="452" r="40" fill="#fff"/></svg></span>
-      <span class="txt">Ghost<br><span class="tiny">Clean up the past — erase your footprint</span></span>
-      <span class="arrow">›</span></div>
-  </a>
+  <!-- MENU: hidden until the owner code checks out -->
+  <div id="menu" hidden>
+    <div style="text-align:center;margin:40px 0 10px">
+      <p class="huge">Ghost + Lock</p>
+      <p class="sub">Two apps. One job: make you hard to find and hard to hit.</p>
+    </div>
 
-  <a href="lock/" style="text-decoration:none">
-    <div class="btn"><span class="ico"><svg viewBox="0 0 1024 1024" width="34" height="34" aria-hidden="true"><path d="M372 470 L 372 372 C 372 294, 434 232, 512 232 C 590 232, 652 294, 652 372 L 652 470" fill="none" stroke="#fff" stroke-width="54" stroke-linecap="round"/><rect x="316" y="470" width="392" height="322" rx="46" fill="none" stroke="#fff" stroke-width="54"/><circle cx="512" cy="600" r="44" fill="#fff"/><rect x="490" y="600" width="44" height="120" rx="22" fill="#fff"/></svg></span>
-      <span class="txt">Lock<br><span class="tiny">Protect the present — block what’s coming</span></span>
-      <span class="arrow">›</span></div>
-  </a>
+    <a href="ghost/" style="text-decoration:none">
+      <div class="btn"><span class="ico"><svg viewBox="0 0 1024 1024" width="34" height="34" aria-hidden="true"><path d="M512 208 C 372 208, 300 316, 300 452 L 300 792 C 300 812, 322 822, 338 808 L 392 762 C 404 752, 420 752, 432 762 L 486 808 C 498 818, 514 818, 526 808 L 580 762 C 592 752, 608 752, 620 762 L 674 808 C 690 822, 712 812, 712 792 L 712 452 C 712 316, 640 208, 512 208 Z" fill="none" stroke="#fff" stroke-width="44" stroke-linejoin="round"/><circle cx="440" cy="452" r="40" fill="#fff"/><circle cx="584" cy="452" r="40" fill="#fff"/></svg></span>
+        <span class="txt">Ghost<br><span class="tiny">Clean up the past — erase your footprint</span></span>
+        <span class="arrow">›</span></div>
+    </a>
 
-  <div class="hr"></div>
-  <div class="card">
-    <h3>Put them on your phone & Mac</h3>
-    <p><b>iPhone:</b> open Ghost or Lock in Safari → tap the Share button → <b>Add to Home Screen</b>. Do it for each app. Real icon, full screen, works offline.</p>
-    <p><b>Mac:</b> open the app in Safari → File menu → <b>Add to Dock</b>.</p>
-    <p><b>Important:</b> set up the password <b>inside the installed app</b>, not in the Safari tab — installed apps keep their own separate storage. Each app has its own independent lock: two apps, two vaults, so a problem in one can never touch the other.</p>
+    <a href="lock/" style="text-decoration:none">
+      <div class="btn"><span class="ico"><svg viewBox="0 0 1024 1024" width="34" height="34" aria-hidden="true"><path d="M372 470 L 372 372 C 372 294, 434 232, 512 232 C 590 232, 652 294, 652 372 L 652 470" fill="none" stroke="#fff" stroke-width="54" stroke-linecap="round"/><rect x="316" y="470" width="392" height="322" rx="46" fill="none" stroke="#fff" stroke-width="54"/><circle cx="512" cy="600" r="44" fill="#fff"/><rect x="490" y="600" width="44" height="120" rx="22" fill="#fff"/></svg></span>
+        <span class="txt">Lock<br><span class="tiny">Protect the present — block what’s coming</span></span>
+        <span class="arrow">›</span></div>
+    </a>
+
+    <div class="hr"></div>
+    <div class="card">
+      <h3>Put them on your phone &amp; Mac</h3>
+      <p><b>iPhone:</b> open Ghost or Lock in Safari → tap the Share button → <b>Add to Home Screen</b>. Do it for each app. Real icon, full screen, works offline.</p>
+      <p><b>Mac:</b> open the app in Safari → File menu → <b>Add to Dock</b>.</p>
+      <p><b>Important:</b> set up the password <b>inside the installed app</b>, not in the Safari tab — installed apps keep their own separate storage. Each app has its own independent lock: two apps, two vaults, so a problem in one can never touch the other.</p>
+    </div>
   </div>
+
 </div>
+
+<script src="shared/owner.js"></script>
+<script>
+(()=>{
+  const code = document.getElementById('code');
+  const btn = document.getElementById('enter');
+  const msg = document.getElementById('msg');
+  const gate = document.getElementById('gate');
+  const menu = document.getElementById('menu');
+
+  async function ok(v){
+    const O = window.OWNER;
+    if(!O || !O.hashHex) return true;
+    if(!(crypto && crypto.subtle)){ msg.textContent='Open this page over https.'; return false; }
+    const enc = new TextEncoder();
+    const base = await crypto.subtle.importKey('raw', enc.encode(v.trim()), 'PBKDF2', false, ['deriveBits']);
+    const salt = Uint8Array.from(O.saltHex.match(/.{2}/g).map(x=>parseInt(x,16)));
+    const bits = await crypto.subtle.deriveBits({name:'PBKDF2', salt, iterations:O.iterations, hash:'SHA-256'}, base, 256);
+    const hex = [...new Uint8Array(bits)].map(x=>x.toString(16).padStart(2,'0')).join('');
+    return hex === O.hashHex.toLowerCase();
+  }
+
+  async function go(){
+    if(!code.value) return;
+    btn.disabled = true; msg.textContent = 'Checking…';
+    try{
+      if(await ok(code.value)){ gate.remove(); menu.hidden = false; }
+      else { msg.textContent = 'Wrong owner code.'; code.value=''; code.focus(); }
+    }catch(e){ msg.textContent = 'Could not check. Try again.'; }
+    btn.disabled = false;
+    if(msg.textContent==='Checking…') msg.textContent='';
+  }
+  btn.addEventListener('click', go);
+  code.addEventListener('keydown', e=>{ if(e.key==='Enter') go(); });
+})();
+</script>
 </body>
 </html>

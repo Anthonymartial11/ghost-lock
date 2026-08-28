@@ -80,17 +80,17 @@ const SPAM = [
     why:'The free federal registry. Legitimate telemarketers must stop calling you within 31 days, and calls that still come are provably illegal — reportable on the same site.',
     url:'https://www.donotcall.gov/',
     steps:['Open donotcall.gov','Tap Register Your Phone','Enter your number and email','Confirm the email they send you']},
-  {id:'sp_silence', title:'Silence unknown callers',
-    why:'Anyone not in your contacts goes straight to voicemail without ringing. Real people leave a message; robots almost never do.',
-    steps:['Settings → Apps → Phone','Silence Unknown Callers','Turn ON']},
-  {id:'sp_filter', title:'Filter texts from unknown senders',
-    why:'Texts from numbers you don’t know move into a separate list, silently. Your Mac’s Messages follows the same setting.',
-    steps:['Settings → Apps → Messages','Turn ON “Filter Unknown Senders”']},
+  {id:'sp_silence', title:'Screen unknown callers — don’t just silence them',
+    why:'An unknown caller is NOT the same as a spam caller — it could be your doctor or a delivery. Screening answers the call for you, asks who it is and why, and shows you their answer live before your phone rings. Real people answer; spam robots hang up. Use full silencing only if your iPhone doesn’t have screening.',
+    steps:['Settings → Apps → Phone','Tap “Screen Unknown Callers”','Choose “Ask Reason for Calling” (this is the screening option)','No screening option on your iOS? Then use “Silence Unknown Callers” — unknowns go to voicemail, real people leave a message']},
+  {id:'sp_filter', title:'Screen texts from unknown senders',
+    why:'Same idea for texts: messages from numbers you don’t know are held in a separate quiet list — nothing is lost, real senders (delivery updates, verification codes) still arrive, they just don’t interrupt you. Known spam never even gets that far once you report it (next item).',
+    steps:['Settings → Apps → Messages','Turn ON “Screen Unknown Senders” (older iOS calls it “Filter Unknown Senders”)','Check the Unknown Senders list once in a while for real ones']},
   {id:'sp_7726', title:'Report spam texts — forward to 7726',
-    why:'7726 spells SPAM. Forwarding a junk text there is free and tells your carrier to investigate and block the sender at the network level.',
+    why:'This is how a number officially becomes SPAM instead of just unknown. 7726 spells SPAM; forwarding a junk text there is free and tells your carrier to investigate and block the sender at the network level, for everyone.',
     steps:['Press and hold the spam message bubble','Tap More → select it → tap the forward arrow','Send it to 7726','Reply with the sender’s number when the carrier asks','Also tap “Report Junk” under the message when it appears']},
-  {id:'sp_carrier', title:'Turn on your carrier’s free call blocker',
-    why:'AT&T, Verizon and T-Mobile each have a free app that labels and blocks known scam calls before your phone rings.',
+  {id:'sp_carrier', title:'Turn on your carrier’s free spam-call blocker',
+    why:'This is the layer that actually knows who the SPAM callers are: carriers keep a live database of confirmed scam numbers and label or block those calls before your phone rings — while unknown-but-clean numbers ring normally. Screening handles the unknowns; this handles the known-bad.',
     steps:['App Store → search your carrier:','AT&T: “ActiveArmor” · Verizon: “Call Filter” · T-Mobile: “Scam Shield”','Install the FREE version and turn on scam blocking']},
   {id:'sp_robot', title:'Never talk to a robocall',
     why:'Pressing a button or saying “yes” marks your number as live — and multiplies the calls. Answer, say nothing you don’t have to, hang up.',
@@ -132,7 +132,8 @@ function renderHome(){
     sub:'How strong? Already stolen?', onClick:()=>Nav.go(renderPassword)}));
 
   body.appendChild(BigBtn({title:'Stop spam calls & texts',
-    badge:`${listDone(SPAM)}/${SPAM.length}`, onClick:()=>Nav.go(()=>renderChecklist('Stop spam calls & texts', SPAM))}));
+    badge:`${listDone(SPAM)}/${SPAM.length}`, onClick:()=>Nav.go(()=>renderChecklist('Stop spam calls & texts', SPAM,
+      'Two different problems, two different fixes. An <b>unknown</b> caller is just someone not in your contacts — could be your doctor. A <b>spam</b> caller is a confirmed bad number. These steps <b>screen</b> the unknowns so real people still reach you, and <b>block</b> the known spam outright.'))}));
 
   body.appendChild(BigBtn({title:'Harden my iPhone',
     badge:`${listDone(IPHONE)}/${IPHONE.length}`, onClick:()=>Nav.go(()=>renderChecklist('Harden my iPhone', IPHONE))}));
@@ -297,8 +298,10 @@ function renderPassword(){
 }
 
 /* =============== CHECKLISTS =============== */
-function renderChecklist(title, list){
-  const nodes = [el(`<p class="sub">${listDone(list)} of ${list.length} done. Tap one, follow the steps, mark it.</p>`)];
+function renderChecklist(title, list, intro){
+  const nodes = [];
+  if(intro) nodes.push(el(`<p class="sub">${intro}</p>`));
+  nodes.push(el(`<p class="sub">${listDone(list)} of ${list.length} done. Tap one, follow the steps, mark it.</p>`));
   for(const item of list){
     const done = ckDone(item.id);
     const node = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">

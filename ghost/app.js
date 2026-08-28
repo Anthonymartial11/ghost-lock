@@ -35,22 +35,22 @@ function renderHome(){
       <p class="sub">exposure points closed. ${c.total-c.done} remaining.</p>
     </div>`));
 
-  body.appendChild(BigBtn({ico:'🕵️', title:'Get me off data-seller sites',
+  body.appendChild(BigBtn({title:'Get me off data-seller sites',
     sub:'Sites that sell your name, address & number',
     badge:String(c.bLeft), onClick:()=>Nav.go(renderBrokers)}));
 
-  body.appendChild(BigBtn({ico:'🗑', title:'Delete my old accounts',
+  body.appendChild(BigBtn({title:'Delete my old accounts',
     sub:'Unused profiles are open doors', badge:String(c.aLeft), onClick:()=>Nav.go(renderAccounts)}));
 
-  body.appendChild(BigBtn({ico:'📧', title:'Stop junk email',
+  body.appendChild(BigBtn({title:'Stop junk email',
     sub:'Unsubscribe and make it stick',
     badge:String(S().ghost.unsubs.filter(u=>u.status!=='done').length), onClick:()=>Nav.go(renderUnsubs)}));
 
-  body.appendChild(BigBtn({ico:'💧', title:'Was I leaked?',
+  body.appendChild(BigBtn({title:'Was I leaked?',
     sub:'Check passwords & emails against known breaches', onClick:()=>Nav.go(renderLeaks)}));
 
-  body.appendChild(BigBtn({ico:'📜', title:'Activity log', onClick:()=>Nav.go(renderLog)}));
-  body.appendChild(BigBtn({ico:'⚙️', title:'Settings', onClick:()=>Shell.openSettings()}));
+  body.appendChild(BigBtn({title:'Activity log', onClick:()=>Nav.go(renderLog)}));
+  body.appendChild(BigBtn({title:'Settings', onClick:()=>Shell.openSettings()}));
   return scr;
 }
 
@@ -76,9 +76,9 @@ function brokerSheet(b){
   const st = brokerStatus(b.id);
   const s = sheet(b.name, [
     el(`<p class="plain">${esc(b.note)}</p>`),
-    BigBtn({ico:'1️⃣', title:'Open their removal page', arrow:false, onClick:()=>{
+    BigBtn({title:'Step 1 — Open their removal page', arrow:false, onClick:()=>{
       Shell.openExternal(b.url); }}),
-    BigBtn({ico:'2️⃣', title:'Copy my demand letter', sub:'Paste it into their form or email', arrow:false, onClick:()=>{
+    BigBtn({title:'Step 2 — Copy my demand letter', sub:'Paste it into their form or email', arrow:false, onClick:()=>{
       copy(Tools.deletionLetter(b.name, S().profile)); }}),
     el(`<div class="hr"></div>`),
     BigBtn({title: st==='sent'?'✓ Marked as sent':'I sent the request', primary: st!=='sent', arrow:false, onClick:async ()=>{
@@ -118,7 +118,7 @@ function acctSheet(a){
   const st = acctStatus(a.id);
   const s = sheet(a.name, [
     el(`<p class="plain">${esc(a.note)}</p>`),
-    BigBtn({ico:'🚪', title:'Open the delete page', arrow:false, onClick:()=>Shell.openExternal(a.url)}),
+    BigBtn({title:'Open the delete page', arrow:false, onClick:()=>Shell.openExternal(a.url)}),
     el(`<div class="hr"></div>`),
     BigBtn({title:'It’s deleted', primary:true, arrow:false, onClick:async ()=>{
       S().ghost.accounts[a.id]='done'; Vault.log('Ghost','Deleted '+a.name+' account');
@@ -162,7 +162,7 @@ function renderUnsubs(){
 function unsubSheet(u,i){
   const s = sheet(u.name, [
     el(`<p class="plain">First try their own unsubscribe link (bottom of their email). If they keep mailing you, send the demand below — the law is on your side.</p>`),
-    BigBtn({ico:'📋', title:'Copy demand letter', arrow:false, onClick:()=>copy(Tools.unsubscribeLetter(u.name, S().profile))}),
+    BigBtn({title:'Copy demand letter', arrow:false, onClick:()=>copy(Tools.unsubscribeLetter(u.name, S().profile))}),
     el(`<div class="hr"></div>`),
     BigBtn({title:'I unsubscribed', primary:true, arrow:false, onClick:async ()=>{
       u.status='sent'; Vault.log('Ghost','Unsubscribed from '+u.name); await Vault.save(); s.close(); Nav.refresh();
@@ -204,7 +204,7 @@ function renderLeaks(){
   nodes.push(pw, check, out, el(`<div class="hr"></div>`));
 
   nodes.push(el(`<p class="plain"><b>Your email addresses</b> can leak too (with passwords attached). Check them free here — search each email you use:</p>`));
-  nodes.push(BigBtn({ico:'🌐', title:'Check my emails for breaches', sub:'Opens haveibeenpwned.com (free, trusted)', arrow:false,
+  nodes.push(BigBtn({title:'Check my emails for breaches', sub:'Opens haveibeenpwned.com (free, trusted)', arrow:false,
     onClick:()=>Shell.openExternal('https://haveibeenpwned.com/')}));
   nodes.push(el(`<p class="tiny" style="margin-top:10px">If an email shows up in a breach: change that account’s password, turn on two-step login, and never reuse the old password.</p>`));
   return Screen('Was I leaked?', nodes);

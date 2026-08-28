@@ -298,9 +298,9 @@ const Shell = {
       });
       nodes.push(faceRow);
 
-      nodes.push(BigBtn({ico:'🔒', title:'Lock now', arrow:false, onClick:()=>Shell.lockNow()}));
+      nodes.push(BigBtn({title:'Lock now', arrow:false, onClick:()=>Shell.lockNow()}));
       nodes.push(el(`<div class="hr"></div>`));
-      nodes.push(BigBtn({ico:'🗑', title:'Erase everything', sub:'Wipes this app from this device', arrow:false, onClick:()=>{
+      nodes.push(BigBtn({title:'Erase everything', sub:'Wipes this app from this device', arrow:false, onClick:()=>{
         confirmSheet('Erase everything?','This deletes all your saved info and your lock from this device. It cannot be undone.','Erase', async ()=>{
           await Vault.wipeEverything(); toast('Erased'); location.reload();
         });

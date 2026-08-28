@@ -1,5 +1,5 @@
 /* Lock — protect the present. Stop trackers, ads, scams and weak spots
-   BEFORE they get you. Works in tandem with Ghost (same vault, same lock). */
+   BEFORE they get you. Companion app to Ghost — independent vault, own lock. */
 (()=>{
 const { el, esc, Nav, Screen, BigBtn, toast, sheet, confirmSheet, copy, ago } = UI;
 const S = ()=>Vault.state;
@@ -75,13 +75,38 @@ const BROWSE = [
     steps:['iPhone: Settings → your name → iCloud → Hide My Email','Create a new address per site','If one starts getting spam, deactivate it']}
 ];
 
+const SPAM = [
+  {id:'sp_dnc', title:'Put your number on the Do Not Call list',
+    why:'The free federal registry. Legitimate telemarketers must stop calling you within 31 days, and calls that still come are provably illegal — reportable on the same site.',
+    url:'https://www.donotcall.gov/',
+    steps:['Open donotcall.gov','Tap Register Your Phone','Enter your number and email','Confirm the email they send you']},
+  {id:'sp_silence', title:'Silence unknown callers',
+    why:'Anyone not in your contacts goes straight to voicemail without ringing. Real people leave a message; robots almost never do.',
+    steps:['Settings → Apps → Phone','Silence Unknown Callers','Turn ON']},
+  {id:'sp_filter', title:'Filter texts from unknown senders',
+    why:'Texts from numbers you don’t know move into a separate list, silently. Your Mac’s Messages follows the same setting.',
+    steps:['Settings → Apps → Messages','Turn ON “Filter Unknown Senders”']},
+  {id:'sp_7726', title:'Report spam texts — forward to 7726',
+    why:'7726 spells SPAM. Forwarding a junk text there is free and tells your carrier to investigate and block the sender at the network level.',
+    steps:['Press and hold the spam message bubble','Tap More → select it → tap the forward arrow','Send it to 7726','Reply with the sender’s number when the carrier asks','Also tap “Report Junk” under the message when it appears']},
+  {id:'sp_carrier', title:'Turn on your carrier’s free call blocker',
+    why:'AT&T, Verizon and T-Mobile each have a free app that labels and blocks known scam calls before your phone rings.',
+    steps:['App Store → search your carrier:','AT&T: “ActiveArmor” · Verizon: “Call Filter” · T-Mobile: “Scam Shield”','Install the FREE version and turn on scam blocking']},
+  {id:'sp_robot', title:'Never talk to a robocall',
+    why:'Pressing a button or saying “yes” marks your number as live — and multiplies the calls. Answer, say nothing you don’t have to, hang up.',
+    steps:['Don’t press “press 1 to be removed” — it does the opposite','Don’t say “yes” to “can you hear me?”','Hang up. Block the number.']},
+  {id:'sp_source', title:'Cut it off at the source',
+    why:'Spam calls and texts exist because data-seller sites sell your number. Removing yourself there shrinks the pipeline feeding the spammers.',
+    steps:['Open the Ghost app','Run “Get me off data-seller sites”','Include your phone number in Ghost’s Settings so the demand letters cover it']}
+];
+
 /* =============== helpers =============== */
 function ckDone(id){ return !!S().lock.checklist[id]; }
 function listDone(list){ return list.filter(i=>ckDone(i.id)).length; }
 function shieldsUp(){
-  return (S().lock.dnsDone?1:0) + listDone(IPHONE) + listDone(MAC) + listDone(BROWSE);
+  return (S().lock.dnsDone?1:0) + listDone(IPHONE) + listDone(MAC) + listDone(BROWSE) + listDone(SPAM);
 }
-function shieldsTotal(){ return 1 + IPHONE.length + MAC.length + BROWSE.length; }
+function shieldsTotal(){ return 1 + IPHONE.length + MAC.length + BROWSE.length + SPAM.length; }
 
 /* =============== HOME =============== */
 function renderHome(){
@@ -96,26 +121,29 @@ function renderHome(){
       <p class="sub">protections active${up===total?'. Fully hardened.':`. ${total-up} remaining.`}</p>
     </div>`));
 
-  body.appendChild(BigBtn({ico:'🛡', title:'Block ads, trackers & bad sites',
+  body.appendChild(BigBtn({title:'Block ads, trackers & bad sites',
     sub:'One shield for your whole device', badge:S().lock.dnsDone?'ON':'OFF',
     onClick:()=>Nav.go(renderDns)}));
 
-  body.appendChild(BigBtn({ico:'🔗', title:'Is this link safe?',
+  body.appendChild(BigBtn({title:'Is this link safe?',
     sub:'Check before you tap', onClick:()=>Nav.go(renderLink)}));
 
-  body.appendChild(BigBtn({ico:'🔑', title:'Check a password',
+  body.appendChild(BigBtn({title:'Check a password',
     sub:'How strong? Already stolen?', onClick:()=>Nav.go(renderPassword)}));
 
-  body.appendChild(BigBtn({ico:'📱', title:'Harden my iPhone',
+  body.appendChild(BigBtn({title:'Stop spam calls & texts',
+    badge:`${listDone(SPAM)}/${SPAM.length}`, onClick:()=>Nav.go(()=>renderChecklist('Stop spam calls & texts', SPAM))}));
+
+  body.appendChild(BigBtn({title:'Harden my iPhone',
     badge:`${listDone(IPHONE)}/${IPHONE.length}`, onClick:()=>Nav.go(()=>renderChecklist('Harden my iPhone', IPHONE))}));
 
-  body.appendChild(BigBtn({ico:'💻', title:'Harden my Mac',
+  body.appendChild(BigBtn({title:'Harden my Mac',
     badge:`${listDone(MAC)}/${MAC.length}`, onClick:()=>Nav.go(()=>renderChecklist('Harden my Mac', MAC))}));
 
-  body.appendChild(BigBtn({ico:'🧭', title:'Browse without being followed',
+  body.appendChild(BigBtn({title:'Browse without being followed',
     badge:`${listDone(BROWSE)}/${BROWSE.length}`, onClick:()=>Nav.go(()=>renderChecklist('Browse unseen', BROWSE))}));
 
-  body.appendChild(BigBtn({ico:'⚙️', title:'Settings', onClick:()=>Shell.openSettings()}));
+  body.appendChild(BigBtn({title:'Settings', onClick:()=>Shell.openSettings()}));
   return scr;
 }
 
@@ -129,12 +157,12 @@ function renderDns(){
     el(`<div class="hr"></div>`)
   ];
 
-  nodes.push(BigBtn({ico:'1️⃣', title:'Download the shield file', arrow:false, onClick:()=>{
+  nodes.push(BigBtn({title:'Step 1 — Download the shield file', arrow:false, onClick:()=>{
     downloadProfile();
     toast('Downloaded. Now install it (step 2).');
   }}));
 
-  nodes.push(BigBtn({ico:'2️⃣', title:'How to install it', arrow:false, onClick:()=>{
+  nodes.push(BigBtn({title:'Step 2 — How to install it', arrow:false, onClick:()=>{
     sheet('Install the shield', [
       el(`<p class="plain"><b>iPhone:</b></p>`),
       el(`<ol class="plain" style="padding-left:22px;margin-top:0">
@@ -150,7 +178,7 @@ function renderDns(){
     ]);
   }}));
 
-  nodes.push(BigBtn({ico:'3️⃣', title:'Test the shield', sub:'Opens AdGuard’s own checker', arrow:false, onClick:()=>{
+  nodes.push(BigBtn({title:'Step 3 — Test the shield', sub:'Opens AdGuard’s own checker', arrow:false, onClick:()=>{
     Shell.openExternal('https://adguard.com/en/test.html');
   }}));
 
@@ -222,9 +250,8 @@ function renderLink(){
   const out = el(`<div></div>`);
   const btn = BigBtn({title:'Check it', primary:true, arrow:false, onClick:()=>{
     const r = Tools.checkLink(inp.value);
-    const icon = r.risk>=60?'🚨': r.risk>=30?'⚠️':'✓';
     out.innerHTML = `<div class="card">
-      <h3>${icon} ${esc(r.verdict)}</h3>
+      <h3>${esc(r.verdict)}</h3>
       <p style="color:var(--fg)">Danger score: <b class="count">${r.risk}/100</b></p>
       ${r.reasons.map(x=>`<p>• ${esc(x)}</p>`).join('')}
       ${r.risk>=30?`<p style="color:var(--fg)"><b>What to do:</b> don’t open it. If it claims to be your bank or a company, type their address yourself or use their app.</p>`:''}
@@ -258,7 +285,7 @@ function renderPassword(){
     try{
       const n = await Tools.pwnedCount(inp.value);
       out.innerHTML = n>0
-        ? `<div class="card"><h3>🚨 Yes — stolen ${n.toLocaleString()} times</h3><p style="color:var(--fg)">Criminals already have this one. Don’t use it anywhere. Ever.</p></div>`
+        ? `<div class="card"><h3>Yes — stolen ${n.toLocaleString()} times</h3><p style="color:var(--fg)">Criminals already have this one. Don’t use it anywhere. Ever.</p></div>`
         : `<div class="card"><h3>✓ Not in known leaks</h3><p style="color:var(--fg)">Good sign. Long + unique per site is the winning move.</p></div>`;
     }catch(e){ out.innerHTML=`<div class="card"><h3>Couldn’t check</h3><p>Try again when you’re online.</p></div>`; }
   }});
@@ -289,6 +316,7 @@ function checkSheet(item, title, list){
   const s = sheet(item.title, [
     el(`<p class="plain">${esc(item.why)}</p>`),
     el(`<ol class="plain" style="padding-left:22px">${item.steps.map(x=>`<li style="margin:8px 0">${esc(x)}</li>`).join('')}</ol>`),
+    item.url ? BigBtn({title:'Open the page', arrow:false, onClick:()=>Shell.openExternal(item.url)}) : null,
     BigBtn({title: done?'Mark as not done':'Mark as done', primary:!done, arrow:false, onClick:async ()=>{
       S().lock.checklist[item.id] = !done;
       if(!done) Vault.log('Lock', item.title);

@@ -44,12 +44,15 @@
         <span class="arrow">›</span></div>
     </a>
 
-    <div class="hr"></div>
-    <div class="card">
-      <h3>Put them on your phone &amp; Mac</h3>
-      <p><b>iPhone:</b> open Ghost or Lock in Safari → tap the Share button → <b>Add to Home Screen</b>. Do it for each app. Real icon, full screen, works offline.</p>
-      <p><b>Mac:</b> open the app in Safari → File menu → <b>Add to Dock</b>.</p>
-      <p><b>Important:</b> set up the password <b>inside the installed app</b>, not in the Safari tab — installed apps keep their own separate storage. Each app has its own independent lock: two apps, two vaults, so a problem in one can never touch the other.</p>
+    <div id="install">
+      <div class="hr"></div>
+      <div class="card">
+        <h3>Put them on your phone &amp; Mac</h3>
+        <p><b>iPhone:</b> open Ghost or Lock in Safari → tap the Share button → <b>Add to Home Screen</b>. Do it for each app. Real icon, full screen, works offline.</p>
+        <p><b>Mac:</b> open the app in Safari → File menu → <b>Add to Dock</b>.</p>
+        <p><b>Important:</b> set up the password <b>inside the installed app</b>, not in the Safari tab — installed apps keep their own separate storage. Each app has its own independent lock: two apps, two vaults, so a problem in one can never touch the other.</p>
+      </div>
+      <button class="btn btn-outline" id="hideInstall" style="justify-content:center">I’ve installed both — don’t show this again</button>
     </div>
   </div>
 
@@ -63,6 +66,18 @@
   const msg = document.getElementById('msg');
   const gate = document.getElementById('gate');
   const menu = document.getElementById('menu');
+
+  const store = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+                  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} } };
+
+  // Hide install instructions when running AS an installed app, or once dismissed.
+  const installed = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  const install = document.getElementById('install');
+  if(installed || store.get('gl_install_done')==='1') install.remove();
+  else document.getElementById('hideInstall').addEventListener('click', ()=>{ store.set('gl_install_done','1'); install.remove(); });
+
+  // A device that has passed the gate once stays trusted (per-browser, local only).
+  if(store.get('gl_gate')==='1'){ gate.remove(); menu.hidden = false; }
 
   async function ok(v){
     const O = window.OWNER;
@@ -80,7 +95,7 @@
     if(!code.value) return;
     btn.disabled = true; msg.textContent = 'Checking…';
     try{
-      if(await ok(code.value)){ gate.remove(); menu.hidden = false; }
+      if(await ok(code.value)){ store.set('gl_gate','1'); gate.remove(); menu.hidden = false; }
       else { msg.textContent = 'Wrong owner code.'; code.value=''; code.focus(); }
     }catch(e){ msg.textContent = 'Could not check. Try again.'; }
     btn.disabled = false;

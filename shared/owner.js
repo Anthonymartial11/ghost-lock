@@ -1,11 +1,17 @@
-/* owner.js — this app belongs to ONE person.
+/* owner.js — the owner-code gate.
  *
- * Setting up the app on a new device requires the owner code. Without it,
- * the public page is a locked door: strangers can look, but can't use it.
+ * What this IS: a deterrent that stops a casual passer-by who finds the public
+ * URL from setting the app up. First-time setup asks for the owner code.
  *
- * Only a scrambled fingerprint (PBKDF2-SHA256, 300k rounds + salt) of the code
- * lives here — the code itself is never in the source. To change the code:
- *   python3 tools/set-owner-code.py "YOUR-NEW-CODE"
+ * What this is NOT: real protection of your data. This check runs in the
+ * browser, so a technical attacker can bypass it, and the hash below is public
+ * on GitHub. Your actual security is your PASSWORD + encryption (see vault.js).
+ * Because the hash is public, the owner code must be a throwaway random string
+ * you NEVER reuse as a password anywhere. Generate one with:
+ *   python3 tools/set-owner-code.py --random
+ *
+ * Only a salted PBKDF2-SHA256 (300k) fingerprint of the code lives here — never
+ * the code itself.
  */
 window.OWNER = {
   saltHex: '94cbd556a1200cbebb536cd9c528c541',

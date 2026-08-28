@@ -1,12 +1,13 @@
 /* shell.js — the shared lock. Setup, Face ID / password unlock, auto-lock.
    Both Ghost and Lock boot through here so the security is identical.
 
-   Owner-only protections:
-   - Setting up a NEW device requires the owner code (see shared/owner.js).
-     Strangers who find the public URL can't even start using the app.
+   Owner-only deterrents (NOT the encryption — see vault.js for that):
+   - First-time setup asks for the owner code (see shared/owner.js). This stops
+     a casual passer-by; a technical attacker can bypass a client-side check.
    - Wrong password attempts trigger escalating time-outs (30s → 1m → 5m →
-     15m → 1h), remembered across restarts. Face ID is never delayed — your
-     face can't be "guessed".
+     15m → 1h) in the UI. This slows guessing at the screen; it is not a
+     cryptographic control (someone who copies the encrypted store can ignore
+     it), which is why the real defense is a strong password + PBKDF2 600k.
 */
 (()=>{
 const { el, esc, Nav, Screen, BigBtn, toast, sheet, confirmSheet } = UI;
@@ -41,18 +42,41 @@ function fmtLeft(ms){
 const Shell = {
   cfg:null,
 
+  suppressLock:false,   // set true right before WE open an external link/file
+  hideCount:0,          // bumped every time the app is backgrounded
+
   async boot(cfg){
     this.cfg = cfg;                      // { name, glyph, renderHome }
     Nav.init(document.getElementById('root'));
-    // security: lock the moment the app is hidden/backgrounded
-    document.addEventListener('visibilitychange', ()=>{ if(document.hidden) this.lockNow(true); });
-    window.addEventListener('pagehide', ()=> this.lockNow(true));
+    // security: lock the moment the app is hidden/backgrounded — UNLESS we
+    // ourselves just opened an external link (the user tapped a button that
+    // opens a removal page etc.), which also fires visibilitychange.
+    document.addEventListener('visibilitychange', ()=>{
+      if(!document.hidden) return;
+      this.hideCount++;
+      if(this.suppressLock){ this.suppressLock=false; return; }
+      this.lockNow(true);
+    });
+    window.addEventListener('pagehide', ()=>{ this.hideCount++; this.lockNow(true); });
 
     if(await Vault.exists()) this.showUnlock();
     else this.showSetup();
   },
 
+  // Open an external URL without tripping the auto-lock. Used by app buttons.
+  openExternal(url){
+    this.suppressLock = true;
+    window.open(url, '_blank', 'noopener');
+    // safety: if we don't actually background within a moment, clear the flag
+    setTimeout(()=>{ this.suppressLock = false; }, 4000);
+  },
+
+  closeSheets(){
+    document.querySelectorAll('.sheet, .sheet-bg').forEach(n=>n.remove());
+  },
+
   lockNow(silent){
+    this.closeSheets();                 // never leave vault content/buttons over the lock screen
     if(!Vault.key) return;
     Vault.lock();
     if(!silent) toast('Locked');
@@ -67,7 +91,7 @@ const Shell = {
       const p1 = el(`<input type="password" placeholder="Make a password" autocomplete="new-password">`);
       const p2 = el(`<input type="password" placeholder="Type it again" autocomplete="new-password">`);
       const create = BigBtn({title:'Create my lock', primary:true, arrow:false, onClick:async ()=>{
-        if((p1.value||'').length<6) return toast('Use at least 6 characters');
+        if((p1.value||'').length<10) return toast('Use at least 10 characters. A short phrase is best.');
         if(p1.value!==p2.value) return toast('The two do not match');
         create.disabled=true; create.querySelector('.txt').textContent='Checking…';
         try{
@@ -75,12 +99,20 @@ const Shell = {
             create.disabled=false; create.querySelector('.txt').textContent='Create my lock';
             return toast('Wrong owner code. This app belongs to its owner.');
           }
+          // Guard against a stale second setup screen clobbering an existing vault.
+          if(await Vault.exists()){
+            create.disabled=false; create.querySelector('.txt').textContent='Create my lock';
+            toast('This app is already set up on this device.');
+            return this.showUnlock();
+          }
           create.querySelector('.txt').textContent='Setting up…';
-          await Vault.create(p1.value);
+          const pw = p1.value;
+          const h0 = this.hideCount;
+          await Vault.create(pw);
           await guardClear();
           Vault.log(this.cfg.name,'Created the lock');
           await Vault.save();
-          this.afterUnlock(true);
+          this.afterUnlock(true, pw, h0);
         }catch(e){
           create.disabled=false; create.querySelector('.txt').textContent='Create my lock';
           toast('Something went wrong');
@@ -98,7 +130,7 @@ const Shell = {
         nodes.push(el(`<label>Your password</label>`));
       }
       nodes.push(p1, p2, create,
-        el(`<p class="center-note">Pick something you will remember.<br>There is no "forgot password" — that is what keeps it safe.</p>`));
+        el(`<p class="center-note">Use a phrase you'll remember — the longer, the stronger.<br>There is no "forgot password". That is what keeps it safe.</p>`));
       return Screen(this.cfg.name, nodes, {back:false});
     });
   },
@@ -122,27 +154,31 @@ const Shell = {
     const waitNote = el(`<p class="center-note" style="display:none"></p>`);
     nodes.push(waitNote);
 
-    const faceBtn = BigBtn({ico:'☺', title:'Unlock with Face ID', primary:true, arrow:false,
+    const faceBtn = BigBtn({title:'Unlock with Face ID / Touch ID', primary:true, arrow:false,
       onClick:()=>this._tryFaceId(false)});
     faceBtn.id='faceBtn'; faceBtn.style.display='none';
     nodes.push(faceBtn);
 
     const pw = el(`<input type="password" placeholder="Password" autocomplete="current-password">`);
     pw.style.display='none';
+    let busy = false;                    // serialize attempts (guard-race fix)
     const pwBtn = BigBtn({title:'Unlock', primary:true, arrow:false, onClick:async ()=>{
+      if(busy) return;
       const g = await guardGet();
-      if(g.until > Date.now()) return toast('Too many tries. Wait '+fmtLeft(g.until-Date.now()));
+      if(g.until > Date.now()){ tick(); return toast('Too many tries. Wait '+fmtLeft(g.until-Date.now())); }
+      busy = true; pwBtn.disabled = true;
+      const h0 = this.hideCount;
       try{
         await Vault.unlockWithPassword(pw.value);
         await guardClear();
-        this.afterUnlock(false);
+        this.afterUnlock(false, null, h0);
       }catch(e){
         const g2 = await guardFail();
         pw.value='';
         if(g2.until > Date.now()){ toast('Wrong password. Locked for '+fmtLeft(g2.until-Date.now())); tick(); }
         else toast('Wrong password'+(g2.fails>=3?` (${5-g2.fails} tries before a time-out)`:''));
         pw.focus();
-      }
+      }finally{ busy = false; pwBtn.disabled = false; }
     }});
     pwBtn.style.display='none';
     pw.addEventListener('keydown', e=>{ if(e.key==='Enter') pwBtn.click(); });
@@ -164,7 +200,7 @@ const Shell = {
       const left = g.until - Date.now();
       if(left > 0){
         waitNote.style.display='block';
-        waitNote.textContent = '⏳ Too many wrong tries. Password locked for '+fmtLeft(left)+'.';
+        waitNote.textContent = 'Too many wrong tries. Password locked for '+fmtLeft(left)+'.';
         setTimeout(()=>{ if(waitNote.isConnected) tick(); }, 1000);
       } else {
         waitNote.style.display='none';
@@ -175,37 +211,59 @@ const Shell = {
   },
 
   async _tryFaceId(auto){
+    const h0 = this.hideCount;
     try{
       await Bio.unlock();
       await guardClear();
-      this.afterUnlock(false);
+      this.afterUnlock(false, null, h0);
     }catch(e){
       if(!auto) toast('Face ID failed — use your password');
     }
   },
 
-  afterUnlock(isNew){
+  afterUnlock(isNew, password, hideAtStart){
+    // If the app got backgrounded while the unlock was still computing, do NOT
+    // reveal contents — lock straight back down.
+    if(hideAtStart!=null && this.hideCount !== hideAtStart){ Vault.lock(); this.showUnlock(); return; }
     Vault.log(this.cfg.name, 'Unlocked');
     Vault.save();
-    if(isNew) this._offerFaceId();
+    if(isNew) this._offerFaceId(password);
     else Nav.reset(this.cfg.renderHome);
   },
 
-  async _offerFaceId(){
+  async _offerFaceId(password){
     const ok = await Bio.platformAvailable();
     if(!ok){ Nav.reset(this.cfg.renderHome); return; }
     Nav.reset(()=> Screen(this.cfg.name, [
-      el(`<div style="text-align:center;margin:20px 0"><div class="glyph">☺</div></div>`),
-      el(`<p class="big" style="text-align:center">Use Face ID?</p>`),
-      el(`<p class="sub" style="text-align:center">Unlock fast with your face or fingerprint. Your password still works too.</p>`),
+      el(`<div style="text-align:center;margin:20px 0"><div class="glyph">${this.cfg.glyph}</div></div>`),
+      el(`<p class="big" style="text-align:center">Use Face ID / Touch ID?</p>`),
+      el(`<p class="sub" style="text-align:center">Unlock faster with your face or fingerprint. Your password still works too.</p>`),
+      el(`<p class="tiny" style="text-align:center;margin-top:10px">Note: on iPhone this also lets your device passcode open the app, so keep that passcode private.</p>`),
       el(`<div class="hr"></div>`),
-      BigBtn({title:'Turn on Face ID', primary:true, arrow:false, onClick:async ()=>{
-        try{ await Bio.enable(); toast('Face ID is on'); }
-        catch(e){ toast(e.message||'Could not turn on Face ID'); }
+      BigBtn({title:'Turn on Face ID / Touch ID', primary:true, arrow:false, onClick:async (ev)=>{
+        try{ await Bio.enable(password); toast('Face ID unlock is on.'); }
+        catch(e){ toast(e.message||'Could not turn it on.'); }
         Nav.reset(this.cfg.renderHome);
       }}),
       BigBtn({title:'Not now', arrow:false, onClick:()=>Nav.reset(this.cfg.renderHome)})
     ], {back:false}));
+  },
+
+  // Ask for the password (re-auth) then enable Face ID. Used from Settings,
+  // where we no longer have the password in memory.
+  _enableFaceIdFromSettings(){
+    const pw = el(`<input type="password" placeholder="Your password" autocomplete="current-password">`);
+    const go = BigBtn({title:'Turn on Face ID / Touch ID', primary:true, arrow:false, onClick:async ()=>{
+      if(!pw.value) return toast('Enter your password');
+      go.disabled=true;
+      try{ await Bio.enable(pw.value); toast('Face ID unlock is on.'); s.close(); Nav.refresh(); }
+      catch(e){ go.disabled=false; toast(e.message||'Could not turn it on.'); }
+    }});
+    pw.addEventListener('keydown', e=>{ if(e.key==='Enter') go.click(); });
+    const s = sheet('Confirm your password', [
+      el(`<p class="plain">For your security, confirm your password to turn on Face ID unlock.</p>`),
+      pw, go
+    ]);
   },
 
   /* shared Settings screen (used by both apps) */
@@ -233,10 +291,9 @@ const Shell = {
       // Face ID toggle
       const faceRow = el(`<div></div>`);
       Bio.isEnabled().then(on=>{
-        faceRow.appendChild(BigBtn({ico:'☺', title: on?'Face ID is ON — turn off':'Turn on Face ID', arrow:false, onClick:async ()=>{
-          if(on){ await Bio.disable(); toast('Face ID off'); }
-          else { try{ await Bio.enable(); toast('Face ID on'); }catch(e){ toast(e.message);} }
-          Nav.refresh();
+        faceRow.appendChild(BigBtn({title: on?'Face ID / Touch ID is ON — turn off':'Turn on Face ID / Touch ID', arrow:false, onClick:async ()=>{
+          if(on){ await Bio.disable(); toast('Turned off.'); Nav.refresh(); }
+          else { Shell._enableFaceIdFromSettings(); }
         }}));
       });
       nodes.push(faceRow);

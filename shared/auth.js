@@ -27,9 +27,13 @@ const Bio = {
 
   async isEnabled(){ return !!(await kvGet('bio')); },
 
-  // Turn on Face ID unlock. Vault must be UNLOCKED (we need the live key to wrap).
-  async enable(){
+  // Turn on Face ID unlock. Requires the password (re-auth) so we can wrap a
+  // transient extractable copy of the key without ever making the live key
+  // extractable. Vault must be unlocked.
+  async enable(password){
     if(!Vault.key) throw new Error('unlock first');
+    if(!password) throw new Error('password required');
+    const rawVaultKey = await Vault.rawKeyFromPassword(password); // throws on wrong password
     const prfSalt = crypto.getRandomValues(new Uint8Array(32));
     const userId  = crypto.getRandomValues(new Uint8Array(16));
 
@@ -53,16 +57,31 @@ const Bio = {
       throw new Error('This browser can\'t use Face ID to unlock (no PRF). Your password still works.');
     }
 
-    // Get the PRF secret now if not returned at creation.
+    // Get the PRF secret. Unlock always uses the get()/assertion path, so a
+    // secret obtained from an assertion here is representative and needs no
+    // extra check. A secret returned by create() can differ from get()-time on
+    // some authenticators, so in that case verify with one real assertion
+    // before we trust it — otherwise we'd report "Face ID is on" for a setup
+    // that silently fails at the lock screen later.
     let secret = prf.results && prf.results.first;
+    const secretFromCreate = !!secret;
     if(!secret){
-      const got = await this._assert(cred.rawId, prfSalt);
-      secret = got.secret;
+      secret = (await this._assert(cred.rawId, prfSalt)).secret;
     }
     const wrapKey = await this._wrapKeyFrom(secret);
-    const rawVaultKey = await Vault.exportRawKey();
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const wrapped = await crypto.subtle.encrypt({name:'AES-GCM',iv}, wrapKey, rawVaultKey);
+
+    if(secretFromCreate){
+      const check = await this._assert(cred.rawId, prfSalt);
+      const verifyKey = await this._wrapKeyFrom(check.secret);
+      let ok = false;
+      try{
+        const back = await crypto.subtle.decrypt({name:'AES-GCM', iv}, verifyKey, wrapped);
+        ok = b.to(back) === b.to(rawVaultKey);
+      }catch(e){ ok = false; }
+      if(!ok) throw new Error('Face ID could not be verified on this device. Your password still works.');
+    }
 
     await kvSet('bio', {
       credId: b.to(cred.rawId),

@@ -1,5 +1,5 @@
 /* Lock service worker — instant loads, works offline. */
-const CACHE = 'lock-v2';
+const CACHE = 'lock-v3';
 const ASSETS = [
   'index.html','app.js','manifest.webmanifest',
   '../shared/base.css','../shared/owner.js','../shared/vault.js','../shared/auth.js','../shared/ui.js',
@@ -21,9 +21,16 @@ self.addEventListener('fetch', e=>{
   if(e.request.method!=='GET' || url.origin!==location.origin) return;
   e.respondWith(
     fetch(e.request, {cache:'no-cache'}).then(res=>{
-      const copy=res.clone();
-      caches.open(CACHE).then(c=>c.put(e.request, copy));
+      if(res.ok){                       // never cache a 404/500 over a good asset
+        const copy=res.clone();
+        caches.open(CACHE).then(c=>c.put(e.request, copy));
+      }
       return res;
-    }).catch(()=>caches.match(e.request, {ignoreSearch:true}))
+    }).catch(async ()=>{
+      const hit = await caches.match(e.request, {ignoreSearch:true});
+      if(hit) return hit;
+      if(e.request.mode==='navigate') return caches.match('index.html'); // trailing-slash URL
+      return Response.error();
+    })
   );
 });

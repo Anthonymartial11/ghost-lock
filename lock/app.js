@@ -93,7 +93,7 @@ function renderHome(){
     <div style="text-align:center;margin:10px 0 18px">
       <div class="glyph">${up===total?EMBLEMS.lock:EMBLEMS.lockOpen}</div>
       <p class="huge count">${up}<span style="color:var(--dim)"> / ${total}</span></p>
-      <p class="sub">shields up${up===total?'. Fully locked.':'. Raise the rest.'}</p>
+      <p class="sub">protections active${up===total?'. Fully hardened.':`. ${total-up} remaining.`}</p>
     </div>`));
 
   body.appendChild(BigBtn({ico:'🛡', title:'Block ads, trackers & bad sites',
@@ -151,13 +151,13 @@ function renderDns(){
   }}));
 
   nodes.push(BigBtn({ico:'3️⃣', title:'Test the shield', sub:'Opens AdGuard’s own checker', arrow:false, onClick:()=>{
-    window.open('https://adguard.com/en/test.html','_blank');
+    Shell.openExternal('https://adguard.com/en/test.html');
   }}));
 
   nodes.push(el(`<div class="hr"></div>`));
   nodes.push(BigBtn({title: on?'✓ Shield is ON':'The test says I’m protected', primary:!on, arrow:false, onClick:async ()=>{
     S().lock.dnsDone = !on;
-    if(!on){ Vault.log('Lock','DNS shield turned ON'); toast('Whole-device shield up 🛡'); }
+    if(!on){ Vault.log('Lock','DNS shield turned ON'); toast('Protection active.'); }
     await Vault.save(); Nav.refresh();
   }}));
 
@@ -289,11 +289,11 @@ function checkSheet(item, title, list){
   const s = sheet(item.title, [
     el(`<p class="plain">${esc(item.why)}</p>`),
     el(`<ol class="plain" style="padding-left:22px">${item.steps.map(x=>`<li style="margin:8px 0">${esc(x)}</li>`).join('')}</ol>`),
-    BigBtn({title: done?'Un-mark it':'Done — shield up', primary:!done, arrow:false, onClick:async ()=>{
+    BigBtn({title: done?'Mark as not done':'Mark as done', primary:!done, arrow:false, onClick:async ()=>{
       S().lock.checklist[item.id] = !done;
       if(!done) Vault.log('Lock', item.title);
       await Vault.save(); s.close(); Nav.refresh();
-      if(!done) toast('🛡 Shield up');
+      if(!done) toast('Done.');
     }})
   ]);
 }

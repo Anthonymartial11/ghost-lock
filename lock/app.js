@@ -91,7 +91,7 @@ function renderHome(){
 
   body.appendChild(el(`
     <div style="text-align:center;margin:10px 0 18px">
-      <div class="glyph">${up===total?'🔒':'🔓'}</div>
+      <div class="glyph">${up===total?EMBLEMS.lock:EMBLEMS.lockOpen}</div>
       <p class="huge count">${up}<span style="color:var(--dim)"> / ${total}</span></p>
       <p class="sub">shields up${up===total?'. Fully locked.':'. Raise the rest.'}</p>
     </div>`));
@@ -299,5 +299,5 @@ function checkSheet(item, title, list){
 }
 
 /* =============== boot =============== */
-Shell.boot({ name:'Lock', glyph:'🔒', renderHome });
+Shell.boot({ name:'Lock', glyph:EMBLEMS.lock, renderHome });
 })();

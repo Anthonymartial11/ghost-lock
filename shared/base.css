@@ -130,6 +130,7 @@ textarea{min-height:120px;line-height:1.4;resize:vertical}
 
 /* big glyph */
 .glyph{font-size:84px;line-height:1}
+.glyph svg{display:block;margin:0 auto}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 
 /* sheet (bottom modal) */

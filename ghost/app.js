@@ -28,7 +28,7 @@ function renderHome(){
 
   body.appendChild(el(`
     <div style="text-align:center;margin:10px 0 18px">
-      <div class="glyph">👻</div>
+      <div class="glyph">${EMBLEMS.ghost}</div>
       <p class="huge count">${c.pct}%</p>
       <p class="sub">ghost. ${c.total-c.done} things left to clean.</p>
     </div>`));
@@ -219,5 +219,5 @@ function renderLog(){
 }
 
 /* ---------- boot ---------- */
-Shell.boot({ name:'Ghost', glyph:'👻', renderHome });
+Shell.boot({ name:'Ghost', glyph:EMBLEMS.ghost, renderHome });
 })();

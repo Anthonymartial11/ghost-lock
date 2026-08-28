@@ -13,6 +13,12 @@ Two black-and-white web apps that work in tandem, installable on iPhone and Mac 
 - App locks itself the moment it's hidden/backgrounded.
 - There is **no password recovery** — that is the point. Don't forget it.
 
+**Owner-only (safe on a public URL):**
+- Setting up the app on any new device requires the **owner code**. Strangers who find the URL can't even start using it. Only a salted PBKDF2-300k fingerprint of the code is in the source (`shared/owner.js`) — the code itself is never committed. Change it any time: `python3 tools/set-owner-code.py "NEW-CODE"` (or `--random`), then redeploy.
+- Wrong-password guessing triggers escalating time-outs (30s → 1m → 5m → 15m → 1h), remembered across restarts. The correct password is also refused while timed out. Face ID is never delayed — a face can't be guessed.
+- Even with the page public, **your data can't be reached**: it exists only AES-encrypted inside your own devices' browser storage. There is nothing on GitHub but code.
+- Pages carry `noindex` and the repo ships a `robots.txt` — search engines are told to stay away.
+
 ## Run it right now (Mac)
 
 ```bash

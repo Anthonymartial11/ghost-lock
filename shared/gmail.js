@@ -29,6 +29,7 @@ let tokenExp = 0;          // ms epoch
 let account = '';          // connected email, memory only
 let sendCount = 0;         // per-session cap: no bug can turn Gmail into a cannon
 let lastSendAt = 0;
+let sendChain = Promise.resolve();   // serializes sends so cap/pacing can't be raced
 const SEND_CAP = 60;
 
 const rndHex = (n)=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -213,52 +214,62 @@ const Gmail = {
     return { addr, subject, body, hasParams: !!(subject || body) };
   },
 
-  /* Build + send one plain-text email. `to`/`subject` are sanitized to a single
-     header line; only a valid single recipient is allowed. */
+  /* Build + send one plain-text email. The subject and body are ALWAYS ours —
+     a sender's header can never dictate the content of what your account sends.
+     Cap + pacing are reserved synchronously so concurrent calls can't race past
+     them, and sends are serialized through one chain. */
   async sendRaw(to, subject, body){
     if(sendCount >= SEND_CAP) throw new Error('send limit reached — reopen the app to continue');
-    const sinceLast = Date.now() - lastSendAt;
-    if(sinceLast < 300) await new Promise(r=>setTimeout(r, 300 - sinceLast));   // pace sends
-    const oneLine = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim();
-    const addr = oneLine(to);
-    if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)) throw new Error('unsafe address');
-    const raw =
-      'To: ' + addr + '\r\n' +
-      'Subject: ' + oneLine(subject) + '\r\n' +
-      'Content-Type: text/plain; charset="UTF-8"\r\n' +
-      '\r\n' + String(body||'');
-    const b64url = btoa(unescape(encodeURIComponent(raw)))
-      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    await this._call(API + '/messages/send', {         // shares the expiry gate + 401->reconnect
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ raw: b64url })
-    });
-    sendCount++; lastSendAt = Date.now();
-    return true;
+    sendCount++;                                        // reserve the slot NOW, before any await
+    const run = async ()=>{
+      const wait = 300 - (Date.now() - lastSendAt);
+      if(wait > 0) await new Promise(r=>setTimeout(r, wait));
+      lastSendAt = Date.now();
+      const oneLine = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim();
+      const addr = oneLine(to);
+      if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)) throw new Error('unsafe address');
+      const raw =
+        'To: ' + addr + '\r\n' +
+        'Subject: ' + oneLine(subject) + '\r\n' +
+        'Content-Type: text/plain; charset="UTF-8"\r\n' +
+        '\r\n' + String(body||'');
+      const b64url = btoa(unescape(encodeURIComponent(raw)))
+        .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      await this._call(API + '/messages/send', {       // shares the locked-gate + expiry + 401->reconnect
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ raw: b64url })
+      });
+      return true;
+    };
+    const p = sendChain.then(run, run);                // serialize: one send at a time
+    sendChain = p.catch(()=>{});
+    try{ return await p; }
+    catch(e){ sendCount--; throw e; }                  // roll back the reservation if it didn't send
   },
 
-  /* Just the compliant unsubscribe the sender's header asks for. */
-  async sendUnsubscribe(sender){
-    const p = this._parseMailto(sender.mailto);
-    return this.sendRaw(p.addr, p.subject || 'unsubscribe',
-      p.body || 'Please unsubscribe this address from all mailing lists.');
+  /* Registrable-domain compare: is the unsubscribe address on the SENDER's own
+     domain? If not, we refuse to email it — that address is either a third-party
+     relay or an attacker-planted target, and your account must not send there. */
+  _sameOrg(unsubAddr, senderEmail){
+    const reg = (h)=>String(h||'').toLowerCase().split('.').slice(-2).join('.');
+    const da = (String(unsubAddr).split('@')[1]||''), db = (String(senderEmail).split('@')[1]||'');
+    return !!da && !!db && reg(da) === reg(db);
   },
 
-  /* Stop AND erase: unsubscribe + a CCPA/GDPR deletion demand.
-     - If the header specifies an exact unsubscribe token (subject/body), we send
-       that first (so the unsubscribe registers), then a separate deletion demand.
-     - If we control the message, we send one combined demand. */
+  /* Can we safely one-tap email this sender? (valid on-domain unsubscribe addr) */
+  canEmail(sender){
+    try{ const p = this._parseMailto(sender.mailto); return this._sameOrg(p.addr, sender.email); }
+    catch(e){ return false; }
+  },
+
+  /* Stop AND erase: unsubscribe + a CCPA/GDPR deletion demand — but ONLY to the
+     sender's own domain, and ONLY with our wording. Throws 'offdomain' if the
+     unsubscribe address isn't the sender's own (caller falls back to the link). */
   async unsubscribeAndDelete(sender, deletionBody){
     const p = this._parseMailto(sender.mailto);
-    if(p.hasParams){
-      await this.sendRaw(p.addr, p.subject || 'unsubscribe',
-        p.body || 'Please unsubscribe this address from all mailing lists.');
-      await this.sendRaw(p.addr, 'Delete my data and stop selling it (CCPA/GDPR)', deletionBody);
-    } else {
-      await this.sendRaw(p.addr, 'Unsubscribe me and delete my data (CCPA/GDPR)', deletionBody);
-    }
-    return true;
+    if(!this._sameOrg(p.addr, sender.email)) throw new Error('offdomain');
+    return this.sendRaw(p.addr, 'Unsubscribe me and delete my data (CCPA/GDPR)', deletionBody);
   }
 };
 

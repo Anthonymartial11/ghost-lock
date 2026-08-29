@@ -1,5 +1,12 @@
 /* gate.js — the front-page owner-code wall. A separate file (not inline) so the
-   page can enforce script-src 'self': injected scripts can never run here. */
+   page can enforce script-src 'self': injected scripts can never run here.
+   Frame-busting: never allow this page to be embedded (clickjacking / same-origin
+   frame reads). */
+if (window.top !== window.self) {
+  try { document.documentElement.innerHTML = ''; } catch (e) {}
+  try { window.top.location = window.self.location.href; } catch (e) {}
+  throw new Error('framing blocked');
+}
 (()=>{
   const code = document.getElementById('code');
   const btn = document.getElementById('enter');

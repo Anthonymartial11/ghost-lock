@@ -48,7 +48,6 @@ function fmtLeft(ms){
 const Shell = {
   cfg:null,
 
-  suppressLock:false,   // set true right before WE open an external link/file
   hideCount:0,          // bumped every time the app is backgrounded
 
   async boot(cfg){
@@ -59,10 +58,13 @@ const Shell = {
     // security: lock the moment the app is hidden/backgrounded — UNLESS we
     // ourselves just opened an external link (the user tapped a button that
     // opens a removal page etc.), which also fires visibilitychange.
+    // ALWAYS lock when the app leaves the screen — no exceptions. Opening an
+    // external link is no longer an excuse to stay unlocked: coming back is one
+    // Face ID tap, and a backgrounded-but-unlocked app is exactly what a thief
+    // (or anyone who picks up the phone) needs.
     document.addEventListener('visibilitychange', ()=>{
       if(!document.hidden) return;
       this.hideCount++;
-      if(this.suppressLock){ this.suppressLock=false; return; }
       this.lockNow(true);
     });
     window.addEventListener('pagehide', ()=>{ this.hideCount++; this.lockNow(true); });
@@ -71,14 +73,11 @@ const Shell = {
     else this.showSetup();
   },
 
-  // Open an external URL without tripping the auto-lock. Used by app buttons.
-  // Scheme guard: only ordinary web/mail targets, never anything exotic.
+  // Open an external URL. The app locks behind you (see visibilitychange) —
+  // that's deliberate. Scheme guard: only ordinary web/mail targets.
   openExternal(url){
     if(!/^(https?:|mailto:)/i.test(String(url||''))) return;
-    this.suppressLock = true;
     window.open(url, '_blank', 'noopener');
-    // safety: if we don't actually background within a moment, clear the flag
-    setTimeout(()=>{ this.suppressLock = false; }, 4000);
   },
 
   closeSheets(){

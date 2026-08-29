@@ -294,17 +294,18 @@ function renderScanList(nodes, scan, offline){
   nodes.push(el(`<div class="hr"></div>`));
   const still = scan.senders.filter(x=>x.status==='stillEmailing');
   const pending = scan.senders.filter(x=>x.status==='todo');
-  const oneTap = pending.filter(x=>x.mailto);
+  const oneTap = pending.filter(x=>Gmail.canEmail && Gmail.canEmail(x));
 
   // Repeat offenders first
   if(still.length){
     nodes.push(el(`<div class="card"><h3>Ignored your unsubscribe (${still.length})</h3>
       <p style="color:var(--fg)">These kept emailing after you unsubscribed. That’s a legal violation — escalate: re-send the deletion demand, then report them.</p></div>`));
     if(!offline){
-      nodes.push(BigBtn({title:`Re-send deletion demand to all ${still.filter(x=>x.mailto).length}`, arrow:false, onClick:()=>{
-        confirmSheet('Escalate '+still.filter(x=>x.mailto).length+' repeat offenders?',
-          'Sends a fresh unsubscribe + CCPA/GDPR deletion demand to each from your Gmail.',
-          'Send', ()=>runBatch(still.filter(x=>x.mailto), 'Escalated repeat offenders'));
+      const stillEmailable = still.filter(x=>Gmail.canEmail && Gmail.canEmail(x));
+      if(stillEmailable.length) nodes.push(BigBtn({title:`Re-send deletion demand to all ${stillEmailable.length}`, arrow:false, onClick:()=>{
+        confirmSheet('Escalate '+stillEmailable.length+' repeat offenders?',
+          'Sends a fresh unsubscribe + CCPA/GDPR deletion demand to each, from your Gmail, to their own domain.',
+          'Send', ()=>runBatch(stillEmailable, 'Escalated repeat offenders'));
       }}));
     }
     for(const snd of still){ nodes.push(senderRow(snd, offline)); }
@@ -333,8 +334,8 @@ function renderScanList(nodes, scan, offline){
    Filled mark = will be sent. Tap to spare one. Then one send, one confirm. */
 function renderBatchReview(){
   const scan = S().ghost.scan;
-  const list = (scan?.senders||[]).filter(x=>x.status==='todo' && x.mailto);
-  if(!list.length) return Screen('Review & send', [el(`<p class="center-note">Nothing waiting for approval.</p>`)]);
+  const list = (scan?.senders||[]).filter(x=>x.status==='todo' && Gmail.canEmail && Gmail.canEmail(x));
+  if(!list.length) return Screen('Review & send', [el(`<p class="center-note">Nothing waiting for one-tap removal. Senders whose unsubscribe is off-site are in the main list — open each and use their page.</p>`)]);
 
   const sel = new Set(list.map(x=>x.email));            // start with all marked
   const head = el(`<p class="sub"></p>`);
@@ -397,16 +398,18 @@ function senderRow(snd, offline){
 
 function senderSheet(snd, offline){
   const escalating = snd.status==='stillEmailing';
+  const canEmail = !offline && Gmail.canEmail && Gmail.canEmail(snd);
   const s = sheet(snd.name, [
     escalating ? el(`<div class="card"><h3>Ignored your unsubscribe</h3><p style="color:var(--fg)">They emailed you again after you unsubscribed. Re-send the deletion demand, and if it continues, report them (below).</p></div>`) : null,
     el(`<p class="plain">${esc(snd.email)} — ${snd.count} email${snd.count>1?'s':''} in your recent inbox.</p>`),
-    (snd.mailto && !offline) ? BigBtn({title: escalating?'Re-send unsubscribe + deletion demand':'Unsubscribe + demand deletion', sub:'Stops future mail AND demands they erase your data (CCPA/GDPR)', primary:true, arrow:false, onClick:async ()=>{
+    canEmail ? BigBtn({title: escalating?'Re-send unsubscribe + deletion demand':'Unsubscribe + demand deletion', sub:'Stops future mail AND demands they erase your data (CCPA/GDPR)', primary:true, arrow:false, onClick:async ()=>{
       try{
         await Gmail.unsubscribeAndDelete(snd, deletionBody(snd));
         snd.status='sent'; snd.unsubAt=Date.now(); Vault.log('Ghost','Unsubscribe + deletion demand to '+snd.email);
         await Vault.save(); s.close(); Nav.refresh(); toast('Sent — unsubscribe + deletion demand.');
-      }catch(e){ toast(e.message==='reconnect'?'Google session expired — reconnect':'Send failed.'); }
+      }catch(e){ toast(e.message==='reconnect'?'Google session expired — reconnect': e.message==='offdomain'?'Their unsubscribe is off-site — use their page below.':'Send failed.'); }
     }}) : null,
+    (!canEmail && snd.mailto && !offline) ? el(`<p class="tiny">Their unsubscribe address is off their own domain, so Ghost won’t email it (that’s how spammers try to misuse your account). Use their unsubscribe page instead.</p>`) : null,
     escalating ? BigBtn({title:'Report them (FTC)', sub:'File a spam complaint at reportfraud.ftc.gov', arrow:false, onClick:()=>Shell.openExternal('https://reportfraud.ftc.gov/')}) : null,
     snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>{ s.close(); openUnsubLink(snd.link); }}) : null,
     (!snd.mailto && !snd.link) ? el(`<p class="tiny">They offer no unsubscribe channel — that itself violates CAN-SPAM. Mark their emails as spam in Mail, and add them to your junk tracker.</p>`) : null,

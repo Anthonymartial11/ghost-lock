@@ -203,7 +203,7 @@ function renderInbox(){
   }
 
   if(!Gmail.connected()){
-    nodes.push(el(`<p class="plain"><b>What this does:</b> connects to your Gmail, reads only the <b>labels on the envelopes</b> — who sent it and their unsubscribe instructions. It cannot read the letters inside. Then it lines up unsubscribes and <b>you</b> fire them.</p>`));
+    nodes.push(el(`<p class="plain"><b>What this does:</b> connects to your Gmail and reads only the <b>labels on the envelopes</b> across your Promotions, Updates and Social mail — who sent it and their unsubscribe instructions. It cannot read the letters inside. Then <b>you</b> fire off, for each junk sender, an unsubscribe <b>and</b> a legal demand to delete your data. Scan again later and it flags anyone who kept emailing you.</p>`));
     nodes.push(el(`<p class="plain"><b>What happens when you tap Connect:</b> you go to Google’s own sign-in, approve, and come back. The app will be locked when you return (that’s the auto-lock doing its job) — unlock and the connection is live for about an hour.</p>`));
     nodes.push(BigBtn({title:'Connect my Gmail', primary:true, arrow:false, onClick:()=>Gmail.connect()}));
     const scan = S().ghost.scan;
@@ -212,23 +212,34 @@ function renderInbox(){
   }
 
   nodes.push(el(`<p class="sub">Connected as <b>${esc(Gmail.account()||'your Gmail')}</b>. Headers only. Nothing sends without your tap.</p>`));
+  const already = (S().ghost.scan?.senders||[]).some(x=>x.status==='sent');
 
   const out = el(`<div></div>`);
-  const scanBtn = BigBtn({title:'Scan my inbox now', primary:true, arrow:false, onClick:async ()=>{
-    scanBtn.disabled = true; out.innerHTML = `<p class="center-note">Scanning… this reads envelope headers only.</p>`;
+  const scanBtn = BigBtn({title: already?'Re-check my inbox':'Scan my inbox now', sub: already?'Finds new junk + flags anyone still emailing you':'', primary:true, arrow:false, onClick:async ()=>{
+    scanBtn.disabled = true; out.innerHTML = `<p class="center-note">Scanning Promotions, Updates & Social — envelope headers only…</p>`;
     try{
       const senders = await Gmail.scan((n,total)=>{ out.innerHTML = `<p class="center-note">Checked ${n}${total?' of '+total:''} messages…</p>`; });
       const prev = S().ghost.scan?.senders || [];
-      const oldStatus = {}; prev.forEach(x=>{ oldStatus[x.email]=x.status; });
-      // Merge: keep any previously found sender the new scan didn't return, so a
-      // slightly-incomplete scan never loses senders you were already tracking.
-      const merged = senders.map(x=>({ ...x, status: oldStatus[x.email]||'todo' }));
+      const prevBy = {}; prev.forEach(x=>{ prevBy[x.email]=x; });
+      // Merge new scan onto prior state, preserving status/unsubAt, and RE-CHECK:
+      // if a sender we unsubscribed has emailed again SINCE we unsubscribed,
+      // flag it as still emailing so it can be escalated.
+      let stillCount = 0;
+      const merged = senders.map(x=>{
+        const p = prevBy[x.email];
+        const rec = { ...x, status: p?.status||'todo', unsubAt: p?.unsubAt||0 };
+        if((rec.status==='sent') && rec.unsubAt && x.lastSeen > rec.unsubAt){
+          rec.status = 'stillEmailing'; stillCount++;
+        }
+        return rec;
+      });
       const seen = new Set(senders.map(x=>x.email));
-      prev.forEach(x=>{ if(!seen.has(x.email)) merged.push(x); });
+      prev.forEach(x=>{ if(!seen.has(x.email)) merged.push(x); });   // keep senders this scan missed
       S().ghost.scan = { t: Date.now(), senders: merged };
-      Vault.log('Ghost','Scanned inbox: '+senders.length+' marketing senders found');
+      Vault.log('Ghost','Scanned inbox: '+senders.length+' senders'+(stillCount?', '+stillCount+' still emailing after unsubscribe':''));
       await Vault.save();
       Nav.refresh();
+      if(stillCount) toast(stillCount+' sender'+(stillCount>1?'s':'')+' kept emailing after you unsubscribed — see the top of the list.');
     }catch(e){
       scanBtn.disabled = false;
       out.innerHTML = '';
@@ -249,56 +260,90 @@ function renderInbox(){
   return Screen('Scan my inbox', nodes);
 }
 
+function deletionBody(snd){ return Tools.unsubscribeLetter(snd.name, S().profile); }
+
+async function runBatch(list, label){
+  let sent=0, failed=0, stopped=false;
+  for(const snd of list){
+    try{
+      await Gmail.unsubscribeAndDelete(snd, deletionBody(snd));
+      snd.status='sent'; snd.unsubAt=Date.now(); sent++;
+    }catch(e){
+      if(e.message==='reconnect'){ stopped=true; break; }
+      failed++;
+    }
+  }
+  Vault.log('Ghost', label+': '+sent+' sent');
+  await Vault.save(); Nav.refresh();
+  if(stopped) toast('Sent '+sent+'. Google session ended — reconnect to finish.');
+  else if(failed) toast('Sent '+sent+'. '+failed+' could not be sent — try again.');
+  else toast(sent+' handled — unsubscribe + deletion demand sent.');
+}
+
 function renderScanList(nodes, scan, offline){
   nodes.push(el(`<div class="hr"></div>`));
+  const still = scan.senders.filter(x=>x.status==='stillEmailing');
   const pending = scan.senders.filter(x=>x.status==='todo');
   const oneTap = pending.filter(x=>x.mailto);
-  nodes.push(el(`<p class="sub">${scan.senders.length} marketing senders found · ${pending.length} not handled yet. ${offline?'(from your last scan)':''}</p>`));
+
+  // Repeat offenders first
+  if(still.length){
+    nodes.push(el(`<div class="card"><h3>Ignored your unsubscribe (${still.length})</h3>
+      <p style="color:var(--fg)">These kept emailing after you unsubscribed. That’s a legal violation — escalate: re-send the deletion demand, then report them.</p></div>`));
+    if(!offline){
+      nodes.push(BigBtn({title:`Re-send deletion demand to all ${still.filter(x=>x.mailto).length}`, arrow:false, onClick:()=>{
+        confirmSheet('Escalate '+still.filter(x=>x.mailto).length+' repeat offenders?',
+          'Sends a fresh unsubscribe + CCPA/GDPR deletion demand to each from your Gmail.',
+          'Send', ()=>runBatch(still.filter(x=>x.mailto), 'Escalated repeat offenders'));
+      }}));
+    }
+    for(const snd of still){ nodes.push(senderRow(snd, offline)); }
+    nodes.push(el(`<div class="hr"></div>`));
+  }
+
+  nodes.push(el(`<p class="sub">${scan.senders.length} marketing senders · ${pending.length} not handled yet. ${offline?'(from your last scan)':''}</p>`));
 
   if(!offline && oneTap.length > 1){
-    nodes.push(BigBtn({title:`Send all ${oneTap.length} one-tap unsubscribes`, arrow:false, onClick:()=>{
-      confirmSheet('Send '+oneTap.length+' unsubscribe emails?',
-        'One unsubscribe email goes to each of these senders from your Gmail. Nothing else is sent.',
-        'Send them', async ()=>{
-        let sent=0, failed=0, stopped=false;
-        for(const snd of oneTap){
-          try{ await Gmail.sendUnsubscribe(snd); snd.status='sent'; sent++; }
-          catch(e){
-            if(e.message==='reconnect'){ stopped=true; break; }   // dead token — stop, don't fail silently
-            failed++;                                             // this one didn't go; keep going
-          }
-        }
-        Vault.log('Ghost','Sent '+sent+' unsubscribe emails');
-        await Vault.save(); Nav.refresh();
-        if(stopped) toast('Sent '+sent+'. Google session ended — reconnect to finish the rest.');
-        else if(failed) toast('Sent '+sent+'. '+failed+' could not be sent — try those again.');
-        else toast(sent+' unsubscribe emails sent.');
-      });
+    nodes.push(BigBtn({title:`Unsubscribe + delete — all ${oneTap.length}`, primary:true, arrow:false, onClick:()=>{
+      confirmSheet('Handle '+oneTap.length+' senders?',
+        'For each: an unsubscribe AND a CCPA/GDPR demand to delete your data and stop selling it — sent from your Gmail. Nothing else is sent.',
+        'Send them all', ()=>runBatch(oneTap, 'Batch unsubscribe + delete'));
     }}));
   }
 
-  for(const snd of scan.senders){
-    const method = snd.mailto ? 'One-tap unsubscribe' : snd.link ? 'Unsubscribe link' : 'No unsubscribe offered';
-    const stText = snd.status==='sent' ? 'Unsubscribed ✓' : snd.status==='skip' ? 'Skipped' : method+' · '+snd.count+' emails';
-    const item = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
-      ${dot(snd.status==='sent'?'done':snd.status==='skip'?'sent':'todo')}
-      <span class="grow"><b>${esc(snd.name)}</b><small>${esc(stText)}</small></span>
-      <span class="arrow">›</span></button>`);
-    item.onclick = ()=>senderSheet(snd, offline);
-    nodes.push(item);
+  for(const snd of pending.concat(scan.senders.filter(x=>x.status==='sent'||x.status==='skip'))){
+    nodes.push(senderRow(snd, offline));
   }
 }
 
+function senderRow(snd, offline){
+  const method = snd.mailto ? 'Unsubscribe + delete' : snd.link ? 'Unsubscribe link' : 'No unsubscribe offered';
+  const stText = snd.status==='sent' ? 'Handled ✓'
+    : snd.status==='stillEmailing' ? 'STILL EMAILING — escalate'
+    : snd.status==='skip' ? 'Skipped'
+    : method+' · '+snd.count+' emails';
+  const dotState = snd.status==='sent'?'done': snd.status==='skip'?'sent': snd.status==='stillEmailing'?'pending':'todo';
+  const item = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
+    ${dot(dotState)}
+    <span class="grow"><b>${esc(snd.name)}</b><small>${esc(stText)}</small></span>
+    <span class="arrow">›</span></button>`);
+  item.onclick = ()=>senderSheet(snd, offline);
+  return item;
+}
+
 function senderSheet(snd, offline){
+  const escalating = snd.status==='stillEmailing';
   const s = sheet(snd.name, [
-    el(`<p class="plain">${esc(snd.email)} — ${snd.count} marketing email${snd.count>1?'s':''} in your recent inbox.</p>`),
-    (snd.mailto && !offline) ? BigBtn({title:'Send unsubscribe email now', sub:'One email, from your Gmail, sent when you tap', primary:true, arrow:false, onClick:async ()=>{
+    escalating ? el(`<div class="card"><h3>Ignored your unsubscribe</h3><p style="color:var(--fg)">They emailed you again after you unsubscribed. Re-send the deletion demand, and if it continues, report them (below).</p></div>`) : null,
+    el(`<p class="plain">${esc(snd.email)} — ${snd.count} email${snd.count>1?'s':''} in your recent inbox.</p>`),
+    (snd.mailto && !offline) ? BigBtn({title: escalating?'Re-send unsubscribe + deletion demand':'Unsubscribe + demand deletion', sub:'Stops future mail AND demands they erase your data (CCPA/GDPR)', primary:true, arrow:false, onClick:async ()=>{
       try{
-        await Gmail.sendUnsubscribe(snd);
-        snd.status='sent'; Vault.log('Ghost','Unsubscribed from '+snd.email);
-        await Vault.save(); s.close(); Nav.refresh(); toast('Unsubscribe sent.');
+        await Gmail.unsubscribeAndDelete(snd, deletionBody(snd));
+        snd.status='sent'; snd.unsubAt=Date.now(); Vault.log('Ghost','Unsubscribe + deletion demand to '+snd.email);
+        await Vault.save(); s.close(); Nav.refresh(); toast('Sent — unsubscribe + deletion demand.');
       }catch(e){ toast(e.message==='reconnect'?'Google session expired — reconnect':'Send failed.'); }
     }}) : null,
+    escalating ? BigBtn({title:'Report them (FTC)', sub:'File a spam complaint at reportfraud.ftc.gov', arrow:false, onClick:()=>Shell.openExternal('https://reportfraud.ftc.gov/')}) : null,
     snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>Shell.openExternal(snd.link)}) : null,
     (!snd.mailto && !snd.link) ? el(`<p class="tiny">They offer no unsubscribe channel — that itself violates CAN-SPAM. Mark their emails as spam in Mail, and add them to your junk tracker.</p>`) : null,
     el(`<div class="hr"></div>`),

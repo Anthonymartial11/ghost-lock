@@ -122,20 +122,28 @@ const Gmail = {
     return r.json();
   },
 
-  /* Scan marketing mail (Promotions category), headers only.
-     Returns deduped senders: {name, email, count, mailto, link, subject} */
+  /* Scan bulk mail across ALL the tabs where marketing lands (Promotions,
+     Updates, Social) and several pages deep — headers only. A sender counts as
+     "marketing" only if at least one of its messages carries a List-Unsubscribe
+     header, which keeps personal/transactional mail out of the list.
+     Returns senders: {name, email, count, mailto, link, subject, lastSeen}
+     where lastSeen is the newest message time (ms) — used for re-checks. */
   async scan(onProgress){
-    const ids = [];
-    let pageToken = '';
-    for(let page=0; page<2; page++){
-      const q = new URLSearchParams({ maxResults:'100', labelIds:'CATEGORY_PROMOTIONS' });
-      if(pageToken) q.set('pageToken', pageToken);
-      const res = await this._api('/messages?'+q.toString());
-      (res.messages||[]).forEach(m=>ids.push(m.id));
-      pageToken = res.nextPageToken;
-      if(!pageToken) break;
+    const LABELS = ['CATEGORY_PROMOTIONS','CATEGORY_UPDATES','CATEGORY_SOCIAL'];
+    const PAGES = 3;                 // up to 300 messages per tab (~900 total)
+    const idSet = new Set();
+    for(const label of LABELS){
+      let pageToken = '';
+      for(let page=0; page<PAGES; page++){
+        const q = new URLSearchParams({ maxResults:'100', labelIds: label });
+        if(pageToken) q.set('pageToken', pageToken);
+        const res = await this._api('/messages?'+q.toString());
+        (res.messages||[]).forEach(m=>idSet.add(m.id));
+        pageToken = res.nextPageToken;
+        if(!pageToken) break;
+      }
     }
-
+    const ids = [...idSet];
     const total = ids.length;
     const senders = new Map();
     let done = 0, failed = 0;
@@ -147,6 +155,7 @@ const Gmail = {
             +'&metadataHeaders=From&metadataHeaders=List-Unsubscribe&metadataHeaders=Subject');
           const hs = {};
           ((m.payload||{}).headers||[]).forEach(h=>{ hs[h.name.toLowerCase()] = h.value; });
+          const when = parseInt(m.internalDate||'0',10) || 0;
           const from = hs['from'] || '';
           const em = (from.match(/<([^>]+)>/) || [null, from.trim()])[1].toLowerCase();
           if(em && em.includes('@')){
@@ -154,10 +163,11 @@ const Gmail = {
             const unsub = hs['list-unsubscribe'] || '';
             const mailto = (unsub.match(/<mailto:([^>]+)>/i) || [])[1] || '';
             const link = (unsub.match(/<(https?:[^>]+)>/i) || [])[1] || '';
-            const cur = senders.get(em) || {name, email:em, count:0, mailto:'', link:'', subject:hs['subject']||''};
+            const cur = senders.get(em) || {name, email:em, count:0, mailto:'', link:'', subject:hs['subject']||'', lastSeen:0, hasUnsub:false};
             cur.count++;
-            if(mailto) cur.mailto = mailto;
-            if(link) cur.link = link;
+            if(when > cur.lastSeen) cur.lastSeen = when;
+            if(mailto){ cur.mailto = mailto; cur.hasUnsub = true; }
+            if(link){ cur.link = link; cur.hasUnsub = true; }
             senders.set(em, cur);
           }
         }catch(e){
@@ -173,30 +183,36 @@ const Gmail = {
     if(total > 0 && failed > Math.max(3, total*0.2)){
       const err = new Error('partial'); err.partial = true; throw err;
     }
-    return [...senders.values()].sort((a,b)=>b.count-a.count);
+    // Keep only real bulk senders (those that offer an unsubscribe channel).
+    return [...senders.values()].filter(s=>s.hasUnsub).sort((a,b)=>b.count-a.count);
   },
 
-  /* Send the unsubscribe email a sender's List-Unsubscribe header asks for.
-     Honors the mailto's own subject/body when given (some need an exact token). */
-  async sendUnsubscribe(sender){
-    if(!sender.mailto) throw new Error('no unsubscribe email address');
-    const [addrRaw, qs] = sender.mailto.split('?');
+  /* Parse a List-Unsubscribe mailto (attacker-controlled) into a SAFE target.
+     Strips CR/LF so nothing can inject extra headers, and rejects anything that
+     isn't a single well-formed address. */
+  _parseMailto(mailto){
+    if(!mailto) throw new Error('no unsubscribe email address');
+    const [addrRaw, qs] = mailto.split('?');
     const params = new URLSearchParams(qs||'');
-    // The unsubscribe header is attacker-controlled. Strip any CR/LF so nothing
-    // can inject extra headers (Bcc, To, etc.) into the message we send, and
-    // accept only a single, well-formed recipient address.
     const oneLine = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim();
     const addr = oneLine(addrRaw);
-    if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)){
-      throw new Error('unsafe unsubscribe address');   // refuse to send anywhere questionable
-    }
-    const subject = oneLine(params.get('subject')) || 'unsubscribe';
-    const body = String(params.get('body') || 'Please unsubscribe this address from all mailing lists.');
+    if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)) throw new Error('unsafe unsubscribe address');
+    const subject = oneLine(params.get('subject'));
+    const body = params.get('body') != null ? String(params.get('body')) : '';
+    return { addr, subject, body, hasParams: !!(subject || body) };
+  },
+
+  /* Build + send one plain-text email. `to`/`subject` are sanitized to a single
+     header line; only a valid single recipient is allowed. */
+  async sendRaw(to, subject, body){
+    const oneLine = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim();
+    const addr = oneLine(to);
+    if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)) throw new Error('unsafe address');
     const raw =
       'To: ' + addr + '\r\n' +
-      'Subject: ' + subject + '\r\n' +
+      'Subject: ' + oneLine(subject) + '\r\n' +
       'Content-Type: text/plain; charset="UTF-8"\r\n' +
-      '\r\n' + body;
+      '\r\n' + String(body||'');
     const b64url = btoa(unescape(encodeURIComponent(raw)))
       .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
     await this._call(API + '/messages/send', {         // shares the expiry gate + 401->reconnect
@@ -204,6 +220,29 @@ const Gmail = {
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ raw: b64url })
     });
+    return true;
+  },
+
+  /* Just the compliant unsubscribe the sender's header asks for. */
+  async sendUnsubscribe(sender){
+    const p = this._parseMailto(sender.mailto);
+    return this.sendRaw(p.addr, p.subject || 'unsubscribe',
+      p.body || 'Please unsubscribe this address from all mailing lists.');
+  },
+
+  /* Stop AND erase: unsubscribe + a CCPA/GDPR deletion demand.
+     - If the header specifies an exact unsubscribe token (subject/body), we send
+       that first (so the unsubscribe registers), then a separate deletion demand.
+     - If we control the message, we send one combined demand. */
+  async unsubscribeAndDelete(sender, deletionBody){
+    const p = this._parseMailto(sender.mailto);
+    if(p.hasParams){
+      await this.sendRaw(p.addr, p.subject || 'unsubscribe',
+        p.body || 'Please unsubscribe this address from all mailing lists.');
+      await this.sendRaw(p.addr, 'Delete my data and stop selling it (CCPA/GDPR)', deletionBody);
+    } else {
+      await this.sendRaw(p.addr, 'Unsubscribe me and delete my data (CCPA/GDPR)', deletionBody);
+    }
     return true;
   }
 };

@@ -172,7 +172,7 @@ const Vault = {
 function freshState(){
   return {
     profile:{ name:'', emails:[], phones:[], usernames:[], city:'', state:'' },
-    ghost:{ brokers:{}, accounts:{}, unsubs:[] },  // brokers/accounts: id -> 'todo'|'sent'|'done'|'na'
+    ghost:{ brokers:{}, accounts:{}, unsubs:[], bigtech:{} },  // brokers/accounts: id -> 'todo'|'sent'|'done'|'na'
     lock:{ checklist:{}, dnsDone:false },
     log:[]
   };

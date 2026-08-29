@@ -14,9 +14,11 @@ function counts(){
   const aNa   = DELETE_ACCOUNTS.filter(a=>acctStatus(a.id)==='na').length;   // "no account" = handled
   const aHandled = aDone + aNa;
   const uDone = S().ghost.unsubs.filter(u=>u.status==='done').length;
-  const total = DATA_BROKERS.length + DELETE_ACCOUNTS.length;
-  const done = bDone + aHandled;
-  return { bDone, bSent, aDone, aNa, uDone, total, done,
+  const btMap = S().ghost.bigtech || {};
+  const btDoneCount = BIGTECH.filter(x=>btMap[x.id]==='done').length;
+  const total = DATA_BROKERS.length + DELETE_ACCOUNTS.length + BIGTECH.length;
+  const done = bDone + aHandled + btDoneCount;
+  return { bDone, bSent, aDone, aNa, uDone, btDoneCount, total, done,
     bLeft: DATA_BROKERS.length-bDone, aLeft: DELETE_ACCOUNTS.length-aHandled,
     pct: Math.round(100*done/total) };
 }
@@ -55,6 +57,11 @@ function renderHome(){
   body.appendChild(BigBtn({title:'Scan my inbox for junk',
     sub:'Reads headers only — you approve every send',
     badge: pendingScan ? String(pendingScan) : '', onClick:()=>Nav.go(renderInbox)}));
+
+  const btLeft = BIGTECH.filter(x=>!btDone(x.id)).length;
+  body.appendChild(BigBtn({title:'Cut Big Tech down',
+    sub:'Apple, Google, Meta & co — stop the collecting, delete the file',
+    badge:String(btLeft), onClick:()=>Nav.go(renderBigTech)}));
 
   body.appendChild(BigBtn({title:'Was I leaked?',
     sub:'Check passwords & emails against known breaches', onClick:()=>Nav.go(renderLeaks)}));
@@ -189,6 +196,53 @@ function unsubSheet(u,i){
     }}),
     BigBtn({title:'Remove from list', arrow:false, onClick:async ()=>{
       S().ghost.unsubs.splice(i,1); await Vault.save(); s.close(); Nav.refresh();
+    }})
+  ]);
+}
+
+/* ---------- BIG TECH ---------- */
+function btDone(id){ return (S().ghost.bigtech||{})[id]==='done'; }
+
+function renderBigTech(){
+  const nodes = [
+    el(`<p class="plain">These companies hold the biggest file on you by far. Two moves each: <b>stop the collecting</b>, then <b>make them hand over and delete what they already have</b>.</p>`),
+    el(`<p class="tiny">Honest limit: you can’t reach zero while using their devices and services. Activation, updates, app stores and message routing always touch their servers. What follows kills most of the rest.</p>`)
+  ];
+
+  const companies = [...new Set(BIGTECH.map(x=>x.company))];
+  const rank = { critical:0, high:1, medium:2, low:3 };
+  for(const co of companies){
+    const items = BIGTECH.filter(x=>x.company===co).sort((a,b)=>rank[a.impact]-rank[b.impact]);
+    const done = items.filter(x=>btDone(x.id)).length;
+    nodes.push(el(`<div class="hr"></div>`));
+    nodes.push(el(`<p class="sub"><b>${esc(co)}</b> — ${done} of ${items.length} done</p>`));
+    for(const item of items){
+      const d = btDone(item.id);
+      const tag = item.impact==='critical' ? 'Biggest impact' : item.impact==='high' ? 'High impact' : item.impact==='medium' ? 'Worth doing' : 'Minor';
+      const row = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
+        <span class="dot ${d?'done':''}"></span>
+        <span class="grow"><b>${esc(item.title)}</b><small>${d?'Done ✓':esc(tag)}${item.warn?' · has a trade-off':''}</small></span>
+        <span class="arrow">›</span></button>`);
+      row.onclick = ()=>bigTechSheet(item);
+      nodes.push(row);
+    }
+  }
+  return Screen('Cut Big Tech down', nodes);
+}
+
+function bigTechSheet(item){
+  const d = btDone(item.id);
+  const s = sheet(item.title, [
+    el(`<p class="plain">${esc(item.why)}</p>`),
+    item.caution ? el(`<div class="card"><h3>Before you do this</h3><p style="color:var(--fg)">${esc(item.caution)}</p></div>`) : null,
+    el(`<ol class="plain" style="padding-left:22px">${item.steps.map(x=>`<li style="margin:8px 0">${esc(x)}</li>`).join('')}</ol>`),
+    item.url ? BigBtn({title:'Open the page', arrow:false, onClick:()=>{ s.close(); openUnsubLink(item.url); }}) : null,
+    BigBtn({title: d?'Mark as not done':'Mark as done', primary:!d, arrow:false, onClick:async ()=>{
+      S().ghost.bigtech = S().ghost.bigtech || {};
+      if(d) delete S().ghost.bigtech[item.id];
+      else { S().ghost.bigtech[item.id]='done'; Vault.log('Ghost', item.company+': '+item.title); }
+      await Vault.save(); s.close(); Nav.refresh();
+      if(!d) toast('Done.');
     }})
   ]);
 }

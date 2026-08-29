@@ -34,6 +34,12 @@ async function guardFail(){
   await kvSet('guard', g); return g;
 }
 async function guardClear(){ await kvDel('guard'); }
+
+/* The owner code is a per-DEVICE check, not a per-launch one. Once any part
+   of the system (front page or either app) has verified it on this device,
+   no screen here asks again. */
+function ownerRemembered(){ try{ return localStorage.getItem('gl_owner_ok')==='1'; }catch(e){ return false; } }
+function rememberOwner(){ try{ localStorage.setItem('gl_owner_ok','1'); localStorage.setItem('gl_gate','1'); }catch(e){} }
 function fmtLeft(ms){
   const s = Math.ceil(ms/1000);
   return s>=60 ? Math.floor(s/60)+'m '+String(s%60).padStart(2,'0')+'s' : s+'s';
@@ -46,8 +52,10 @@ const Shell = {
   hideCount:0,          // bumped every time the app is backgrounded
 
   async boot(cfg){
-    this.cfg = cfg;                      // { name, glyph, renderHome }
+    this.cfg = cfg;                      // { name, glyph, renderHome, sibling:{name,url} }
     Nav.init(document.getElementById('root'));
+    // ask the browser to protect our storage from eviction (vault must survive)
+    try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
     // security: lock the moment the app is hidden/backgrounded — UNLESS we
     // ourselves just opened an external link (the user tapped a button that
     // opens a removal page etc.), which also fires visibilitychange.
@@ -85,7 +93,7 @@ const Shell = {
 
   /* ---------------- SETUP (first run on a device) ---------------- */
   showSetup(){
-    const needCode = !!(window.OWNER && window.OWNER.hashHex);
+    const needCode = !!(window.OWNER && window.OWNER.hashHex) && !ownerRemembered();
     Nav.reset(()=>{
       const oc = el(`<input type="password" placeholder="Owner code" autocomplete="off" autocapitalize="characters">`);
       const p1 = el(`<input type="password" placeholder="Make a password" autocomplete="new-password">`);
@@ -95,9 +103,12 @@ const Shell = {
         if(p1.value!==p2.value) return toast('The two do not match');
         create.disabled=true; create.querySelector('.txt').textContent='Checking…';
         try{
-          if(needCode && !(await ownerOk(oc.value))){
-            create.disabled=false; create.querySelector('.txt').textContent='Create my lock';
-            return toast('Wrong owner code. This app belongs to its owner.');
+          if(needCode){
+            if(!(await ownerOk(oc.value))){
+              create.disabled=false; create.querySelector('.txt').textContent='Create my lock';
+              return toast('Wrong owner code. This app belongs to its owner.');
+            }
+            rememberOwner();   // this device is now trusted — never ask again here
           }
           // Guard against a stale second setup screen clobbering an existing vault.
           if(await Vault.exists()){

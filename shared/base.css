@@ -45,6 +45,11 @@ a{color:var(--fg)}
   padding:8px 6px;cursor:pointer;min-width:44px;text-align:left
 }
 .bar h1{font-size:26px;margin:0;font-weight:800;letter-spacing:-.02em}
+.bar .switch{
+  margin-left:auto;background:transparent;border:2px solid var(--line);color:var(--fg);
+  border-radius:999px;padding:8px 16px;font-size:15px;font-weight:700;cursor:pointer;min-height:40px
+}
+.bar .switch:active{background:var(--panel2)}
 
 /* ---------- type ---------- */
 .big{font-size:34px;font-weight:800;letter-spacing:-.03em;margin:0}

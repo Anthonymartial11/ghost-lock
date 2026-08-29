@@ -26,6 +26,9 @@ function dot(status){ return `<span class="dot ${status==='done'?'done':status==
 function renderHome(){
   const c = counts();
   const scr = Screen('Ghost', [], {back:false});
+  const sw = el(`<button class="switch">Lock ›</button>`);
+  sw.onclick = ()=>{ location.href = '../lock/'; };
+  scr.querySelector('.bar').appendChild(sw);
   const body = scr.lastElementChild;
 
   body.appendChild(el(`
@@ -139,13 +142,14 @@ function renderUnsubs(){
     el(`<p class="sub">Open a junk email. Real company? Tap <b>unsubscribe</b> at the very bottom. Looks scammy? <b>Don’t click anything</b> — mark it as spam. Track them here so they stay dead.</p>`)
   ];
   const inp = el(`<input type="text" placeholder="Who sends you junk? (e.g. Nike)">`);
+  const em = el(`<input type="email" placeholder="Their email address (optional — enables one-tap send)" autocapitalize="off">`);
   const add = BigBtn({title:'Add sender', primary:true, arrow:false, onClick:async ()=>{
     const v=inp.value.trim(); if(!v) return toast('Type a sender name');
-    S().ghost.unsubs.unshift({name:v, status:'todo', t:Date.now()});
+    S().ghost.unsubs.unshift({name:v, email:em.value.trim(), status:'todo', t:Date.now()});
     Vault.log('Ghost','Added '+v+' to unsubscribe list');
-    await Vault.save(); inp.value=''; Nav.refresh();
+    await Vault.save(); inp.value=''; em.value=''; Nav.refresh();
   }});
-  nodes.push(inp, add, el(`<div class="hr"></div>`));
+  nodes.push(inp, em, add, el(`<div class="hr"></div>`));
 
   if(!S().ghost.unsubs.length) nodes.push(el(`<p class="center-note">No senders tracked yet.</p>`));
   S().ghost.unsubs.forEach((u,i)=>{
@@ -160,9 +164,15 @@ function renderUnsubs(){
 }
 
 function unsubSheet(u,i){
+  const letter = Tools.unsubscribeLetter(u.name, S().profile);
   const s = sheet(u.name, [
     el(`<p class="plain">First try their own unsubscribe link (bottom of their email). If they keep mailing you, send the demand below — the law is on your side.</p>`),
-    BigBtn({title:'Copy demand letter', arrow:false, onClick:()=>copy(Tools.unsubscribeLetter(u.name, S().profile))}),
+    u.email ? BigBtn({title:'Email them — ready to send', sub:'Opens your Mail app with the demand written. You hit send.', primary:true, arrow:false, onClick:async ()=>{
+      Shell.openExternal(`mailto:${encodeURIComponent(u.email)}?subject=${encodeURIComponent('Unsubscribe me and delete my data')}&body=${encodeURIComponent(letter)}`);
+      u.status='sent'; Vault.log('Ghost','Sent unsubscribe demand to '+u.name);
+      await Vault.save(); Nav.refresh();
+    }}) : el(`<p class="tiny">Add their email address when adding a sender to get a one-tap "ready to send" button here.</p>`),
+    BigBtn({title:'Copy demand letter', arrow:false, onClick:()=>copy(letter)}),
     el(`<div class="hr"></div>`),
     BigBtn({title:'I unsubscribed', primary:true, arrow:false, onClick:async ()=>{
       u.status='sent'; Vault.log('Ghost','Unsubscribed from '+u.name); await Vault.save(); s.close(); Nav.refresh();

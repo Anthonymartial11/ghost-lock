@@ -112,6 +112,9 @@ function shieldsTotal(){ return 1 + IPHONE.length + MAC.length + BROWSE.length +
 function renderHome(){
   const up = shieldsUp(), total = shieldsTotal();
   const scr = Screen('Lock', [], {back:false});
+  const sw = el(`<button class="switch">Ghost ›</button>`);
+  sw.onclick = ()=>{ location.href = '../ghost/'; };
+  scr.querySelector('.bar').appendChild(sw);
   const body = scr.lastElementChild;
 
   body.appendChild(el(`

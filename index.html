@@ -77,7 +77,7 @@
   else document.getElementById('hideInstall').addEventListener('click', ()=>{ store.set('gl_install_done','1'); install.remove(); });
 
   // A device that has passed the gate once stays trusted (per-browser, local only).
-  if(store.get('gl_gate')==='1'){ gate.remove(); menu.hidden = false; }
+  if(store.get('gl_gate')==='1' || store.get('gl_owner_ok')==='1'){ gate.remove(); menu.hidden = false; }
 
   async function ok(v){
     const O = window.OWNER;
@@ -95,7 +95,7 @@
     if(!code.value) return;
     btn.disabled = true; msg.textContent = 'Checking…';
     try{
-      if(await ok(code.value)){ store.set('gl_gate','1'); gate.remove(); menu.hidden = false; }
+      if(await ok(code.value)){ store.set('gl_gate','1'); store.set('gl_owner_ok','1'); gate.remove(); menu.hidden = false; }
       else { msg.textContent = 'Wrong owner code.'; code.value=''; code.focus(); }
     }catch(e){ msg.textContent = 'Could not check. Try again.'; }
     btn.disabled = false;

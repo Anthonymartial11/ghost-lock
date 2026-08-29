@@ -63,10 +63,12 @@ const b64 = {
 
 // extractable=false for the live key (default). Face ID setup derives a
 // separate, transient extractable copy only when it needs to wrap the key.
-async function deriveKey(password, salt, extractable=false){
+// iters: new vaults use PBKDF2_ITERS; unlocking honors the count the vault
+// was CREATED with (stored in meta), so an upgrade never locks the owner out.
+async function deriveKey(password, salt, extractable=false, iters=PBKDF2_ITERS){
   const base = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    {name:'PBKDF2', salt, iterations:PBKDF2_ITERS, hash:'SHA-256'},
+    {name:'PBKDF2', salt, iterations:iters, hash:'SHA-256'},
     base,
     {name:'AES-GCM', length:256},
     extractable,
@@ -107,7 +109,7 @@ const Vault = {
   async unlockWithPassword(password){
     const meta = await kvGet('meta');
     if(!meta) throw new Error('no vault');
-    const key = await deriveKey(password, new Uint8Array(b64.from(meta.salt)));
+    const key = await deriveKey(password, new Uint8Array(b64.from(meta.salt)), false, meta.iters || 250000);
     try{
       const check = await aesDecrypt(key, meta.verifier);
       if(check !== VERIFIER_TEXT) throw 0;
@@ -134,7 +136,7 @@ const Vault = {
   async rawKeyFromPassword(password){
     const meta = await kvGet('meta');
     if(!meta) throw new Error('no vault');
-    const key = await deriveKey(password, new Uint8Array(b64.from(meta.salt)), true);
+    const key = await deriveKey(password, new Uint8Array(b64.from(meta.salt)), true, meta.iters || 250000);
     const check = await aesDecrypt(key, meta.verifier).catch(()=>null);
     if(check !== VERIFIER_TEXT) throw new Error('wrong password');
     return crypto.subtle.exportKey('raw', key);

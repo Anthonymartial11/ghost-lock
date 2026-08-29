@@ -139,10 +139,18 @@ const Gmail = {
      Honors the mailto's own subject/body when given (some need an exact token). */
   async sendUnsubscribe(sender){
     if(!sender.mailto) throw new Error('no unsubscribe email address');
-    const [addr, qs] = sender.mailto.split('?');
+    const [addrRaw, qs] = sender.mailto.split('?');
     const params = new URLSearchParams(qs||'');
-    const subject = params.get('subject') || 'unsubscribe';
-    const body = params.get('body') || 'Please unsubscribe this address from all mailing lists.';
+    // The unsubscribe header is attacker-controlled. Strip any CR/LF so nothing
+    // can inject extra headers (Bcc, To, etc.) into the message we send, and
+    // accept only a single, well-formed recipient address.
+    const oneLine = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim();
+    const addr = oneLine(addrRaw);
+    if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)){
+      throw new Error('unsafe unsubscribe address');   // refuse to send anywhere questionable
+    }
+    const subject = oneLine(params.get('subject')) || 'unsubscribe';
+    const body = String(params.get('body') || 'Please unsubscribe this address from all mailing lists.');
     const raw =
       'To: ' + addr + '\r\n' +
       'Subject: ' + subject + '\r\n' +

@@ -4,6 +4,7 @@ const ASSETS = [
   'index.html','app.js','manifest.webmanifest',
   '../shared/base.css','../shared/owner.js','../shared/vault.js','../shared/auth.js','../shared/ui.js',
   '../shared/shell.js','../shared/data-brokers.js','../shared/delete-accounts.js','../shared/tools.js',
+  '../shared/gmail-config.js','../shared/gmail.js',
   '../icons/ghost-180.png','../icons/ghost-192.png','../icons/ghost-512.png'
 ];
 

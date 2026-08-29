@@ -49,6 +49,11 @@ function renderHome(){
     sub:'Unsubscribe and make it stick',
     badge:String(S().ghost.unsubs.filter(u=>u.status!=='done').length), onClick:()=>Nav.go(renderUnsubs)}));
 
+  const pendingScan = (S().ghost.scan?.senders||[]).filter(x=>x.status==='todo').length;
+  body.appendChild(BigBtn({title:'Scan my inbox for junk',
+    sub:'Reads headers only — you approve every send',
+    badge: pendingScan ? String(pendingScan) : '', onClick:()=>Nav.go(renderInbox)}));
+
   body.appendChild(BigBtn({title:'Was I leaked?',
     sub:'Check passwords & emails against known breaches', onClick:()=>Nav.go(renderLeaks)}));
 
@@ -186,6 +191,116 @@ function unsubSheet(u,i){
   ]);
 }
 
+/* ---------- INBOX SCAN (Gmail hookup) ---------- */
+function renderInbox(){
+  const nodes = [];
+
+  if(!Gmail.configured()){
+    nodes.push(el(`<div class="card"><h3>Needs your Google key</h3>
+      <p style="color:var(--fg)">This feature connects straight to YOUR Gmail with your own Google app key — no middleman, headers only, nothing sent without your tap.</p>
+      <p style="color:var(--fg)">The key isn’t set yet. It takes about 5 minutes to create — follow the setup steps you were given, then it goes live.</p></div>`));
+    return Screen('Scan my inbox', nodes);
+  }
+
+  if(!Gmail.connected()){
+    nodes.push(el(`<p class="plain"><b>What this does:</b> connects to your Gmail, reads only the <b>labels on the envelopes</b> — who sent it and their unsubscribe instructions. It cannot read the letters inside. Then it lines up unsubscribes and <b>you</b> fire them.</p>`));
+    nodes.push(el(`<p class="plain"><b>What happens when you tap Connect:</b> you go to Google’s own sign-in, approve, and come back. The app will be locked when you return (that’s the auto-lock doing its job) — unlock and the connection is live for about an hour.</p>`));
+    nodes.push(BigBtn({title:'Connect my Gmail', primary:true, arrow:false, onClick:()=>Gmail.connect()}));
+    const scan = S().ghost.scan;
+    if(scan) renderScanList(nodes, scan, /*offline*/true);
+    return Screen('Scan my inbox', nodes);
+  }
+
+  nodes.push(el(`<p class="sub">Connected as <b>${esc(Gmail.account()||'your Gmail')}</b>. Headers only. Nothing sends without your tap.</p>`));
+
+  const out = el(`<div></div>`);
+  const scanBtn = BigBtn({title:'Scan my inbox now', primary:true, arrow:false, onClick:async ()=>{
+    scanBtn.disabled = true; out.innerHTML = `<p class="center-note">Scanning… this reads envelope headers only.</p>`;
+    try{
+      const senders = await Gmail.scan(n=>{ out.innerHTML = `<p class="center-note">Checked ${n} messages…</p>`; });
+      const old = {}; (S().ghost.scan?.senders||[]).forEach(x=>{ old[x.email]=x.status; });
+      S().ghost.scan = { t: Date.now(), senders: senders.map(x=>({ ...x, status: old[x.email]||'todo' })) };
+      Vault.log('Ghost','Scanned inbox: '+senders.length+' marketing senders found');
+      await Vault.save();
+      Nav.refresh();
+    }catch(e){
+      scanBtn.disabled = false;
+      out.innerHTML = '';
+      toast(e.message==='reconnect' ? 'Google session expired — tap Connect again' : 'Scan failed. Try again.');
+      if(e.message==='reconnect') Nav.refresh();
+    }
+  }});
+  nodes.push(scanBtn, out);
+
+  nodes.push(BigBtn({title:'Disconnect Gmail', arrow:false, onClick:async ()=>{
+    await Gmail.disconnect(); toast('Disconnected. Access revoked at Google.'); Nav.refresh();
+  }}));
+
+  const scan = S().ghost.scan;
+  if(scan) renderScanList(nodes, scan, false);
+  return Screen('Scan my inbox', nodes);
+}
+
+function renderScanList(nodes, scan, offline){
+  nodes.push(el(`<div class="hr"></div>`));
+  const pending = scan.senders.filter(x=>x.status==='todo');
+  const oneTap = pending.filter(x=>x.mailto);
+  nodes.push(el(`<p class="sub">${scan.senders.length} marketing senders found · ${pending.length} not handled yet. ${offline?'(from your last scan)':''}</p>`));
+
+  if(!offline && oneTap.length > 1){
+    nodes.push(BigBtn({title:`Send all ${oneTap.length} one-tap unsubscribes`, arrow:false, onClick:()=>{
+      confirmSheet('Send '+oneTap.length+' unsubscribe emails?',
+        'One unsubscribe email goes to each of these senders from your Gmail. Nothing else is sent.',
+        'Send them', async ()=>{
+        let sent=0;
+        for(const snd of oneTap){
+          try{ await Gmail.sendUnsubscribe(snd); snd.status='sent'; sent++; }
+          catch(e){ if(e.message==='reconnect'){ toast('Google session expired — reconnect to continue'); break; } }
+        }
+        Vault.log('Ghost','Sent '+sent+' unsubscribe emails');
+        await Vault.save(); Nav.refresh(); toast(sent+' unsubscribe emails sent.');
+      });
+    }}));
+  }
+
+  for(const snd of scan.senders){
+    const method = snd.mailto ? 'One-tap unsubscribe' : snd.link ? 'Unsubscribe link' : 'No unsubscribe offered';
+    const stText = snd.status==='sent' ? 'Unsubscribed ✓' : snd.status==='skip' ? 'Skipped' : method+' · '+snd.count+' emails';
+    const item = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
+      ${dot(snd.status==='sent'?'done':snd.status==='skip'?'sent':'todo')}
+      <span class="grow"><b>${esc(snd.name)}</b><small>${esc(stText)}</small></span>
+      <span class="arrow">›</span></button>`);
+    item.onclick = ()=>senderSheet(snd, offline);
+    nodes.push(item);
+  }
+}
+
+function senderSheet(snd, offline){
+  const s = sheet(snd.name, [
+    el(`<p class="plain">${esc(snd.email)} — ${snd.count} marketing email${snd.count>1?'s':''} in your recent inbox.</p>`),
+    (snd.mailto && !offline) ? BigBtn({title:'Send unsubscribe email now', sub:'One email, from your Gmail, sent when you tap', primary:true, arrow:false, onClick:async ()=>{
+      try{
+        await Gmail.sendUnsubscribe(snd);
+        snd.status='sent'; Vault.log('Ghost','Unsubscribed from '+snd.email);
+        await Vault.save(); s.close(); Nav.refresh(); toast('Unsubscribe sent.');
+      }catch(e){ toast(e.message==='reconnect'?'Google session expired — reconnect':'Send failed.'); }
+    }}) : null,
+    snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>Shell.openExternal(snd.link)}) : null,
+    (!snd.mailto && !snd.link) ? el(`<p class="tiny">They offer no unsubscribe channel — that itself violates CAN-SPAM. Mark their emails as spam in Mail, and add them to your junk tracker.</p>`) : null,
+    el(`<div class="hr"></div>`),
+    BigBtn({title:'Mark as done', arrow:false, onClick:async ()=>{
+      snd.status='sent'; await Vault.save(); s.close(); Nav.refresh();
+    }}),
+    BigBtn({title:'Skip this sender', arrow:false, onClick:async ()=>{
+      snd.status='skip'; await Vault.save(); s.close(); Nav.refresh();
+    }}),
+    BigBtn({title:'Add to my junk tracker', arrow:false, onClick:async ()=>{
+      S().ghost.unsubs.unshift({name:snd.name, email:snd.email, status:'todo', t:Date.now()});
+      await Vault.save(); s.close(); toast('Added to Stop junk email.');
+    }})
+  ]);
+}
+
 /* ---------- LEAKS ---------- */
 function renderLeaks(){
   const nodes = [
@@ -231,5 +346,6 @@ function renderLog(){
 }
 
 /* ---------- boot ---------- */
+Gmail.handleRedirect();   // capture a returning Google sign-in before anything else
 Shell.boot({ name:'Ghost', glyph:EMBLEMS.ghost, renderHome });
 })();

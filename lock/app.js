@@ -131,6 +131,9 @@ function renderHome(){
   body.appendChild(BigBtn({title:'Is this link safe?',
     sub:'Check before you tap', onClick:()=>Nav.go(renderLink)}));
 
+  body.appendChild(BigBtn({title:'I clicked something bad',
+    sub:'Emergency steps — do these in order, right now', onClick:()=>Nav.go(renderEmergency)}));
+
   body.appendChild(BigBtn({title:'Check a password',
     sub:'How strong? Already stolen?', onClick:()=>Nav.go(renderPassword)}));
 
@@ -189,6 +192,9 @@ function renderDns(){
   nodes.push(el(`<div class="hr"></div>`));
   nodes.push(BigBtn({title: on?'✓ Shield is ON':'The test says I’m protected', primary:!on, arrow:false, onClick:async ()=>{
     S().lock.dnsDone = !on;
+    // Non-sensitive status flag so Ghost can tell you whether the shield is up.
+    // (Only a yes/no — the vaults themselves stay separate and encrypted.)
+    try{ localStorage.setItem('gl_shield', !on ? '1' : '0'); }catch(e){}
     if(!on){ Vault.log('Lock','DNS shield turned ON'); toast('Protection active.'); }
     await Vault.save(); Nav.refresh();
   }}));
@@ -248,23 +254,76 @@ function downloadProfile(){
   setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
 }
 
+/* =============== EMERGENCY: I CLICKED SOMETHING BAD =============== */
+const EMERGENCY = [
+  {id:'em_offline', title:'1. Cut it off — go offline now',
+    why:'If something is talking to a criminal’s server, this stops the conversation mid-sentence. Do this first, before anything else.',
+    steps:['Turn ON Airplane Mode','Leave it on until you finish step 3','On a Mac: turn Wi-Fi off']},
+  {id:'em_typed', title:'2. Did you type anything? Change that password NOW',
+    why:'A phishing page’s only goal is your password. If you typed one — even partly, even if the page “errored” — treat it as stolen. Speed matters more than certainty.',
+    steps:['Use a DIFFERENT device that you did not click on','Change the password for that exact account first','Then change it anywhere you reused it','Turn on two-step login for that account']},
+  {id:'em_cards', title:'3. Typed a card number? Call the bank',
+    why:'Freezing the card takes two minutes and beats disputing charges for weeks.',
+    steps:['Use the number on the BACK of your card — never a number from the email','Ask them to freeze the card and issue a new one','Watch the statement for small test charges']},
+  {id:'em_install', title:'4. Did anything download or ask to install?',
+    why:'On iPhone, a website alone cannot install an app — but it CAN push a configuration profile, which is the real iPhone attack. On Mac, a downloaded file is the danger.',
+    steps:['iPhone: Settings → General → VPN & Device Management. If ANY profile is there you did not add, delete it','Mac: check your Downloads folder — drag anything from that site to the Trash, then empty it','Never open a downloaded installer “to see what it is”']},
+  {id:'em_scan', title:'5. Mac: run a real scan',
+    why:'Your Mac has a built-in cleanup tool, and Malwarebytes’ free scanner is the trusted second opinion. This is the actual “destroy the malware” step — it needs a real program, not a web app.',
+    steps:['Restart the Mac (clears anything running in memory)','Download Malwarebytes ONLY from malwarebytes.com','Run a full scan and quarantine anything it finds','Apple menu → System Settings → General → Software Update → install everything']},
+  {id:'em_shield', title:'6. Turn the shield on so it cannot happen again',
+    why:'The whole-device DNS shield blocks known phishing and malware domains before they ever load. It is the one protection that works while you are not paying attention.',
+    steps:['Go back and open “Block ads, trackers & bad sites”','Install the shield profile','Test it']},
+  {id:'em_watch', title:'7. Watch for the follow-up',
+    why:'Criminals who get one thing come back for more — often pretending to be your bank’s “fraud department” calling to help.',
+    steps:['Nobody legitimate will ever call and ask for a code, password, or remote access','If “your bank” calls, hang up and call the number on your card','Check your email rules/forwarding for anything you did not create']}
+];
+
+function renderEmergency(){
+  const nodes = [
+    el(`<div class="card"><h3>Read this first</h3>
+      <p style="color:var(--fg)">Most phishing clicks steal <b>what you type</b>, not your device. If you clicked but typed nothing, downloaded nothing, and installed nothing, you are very probably fine — do steps 1, 4 and 6 anyway.</p>
+      <p style="color:var(--fg)">No app in a web browser can scan or delete malware — Apple forbids it. Step 5 is the real removal step and uses a proper program.</p></div>`)
+  ];
+  nodes.push(el(`<p class="sub">Work down the list in order. ${listDone(EMERGENCY)} of ${EMERGENCY.length} done.</p>`));
+  for(const item of EMERGENCY){
+    const done = ckDone(item.id);
+    const node = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
+      <span class="dot ${done?'done':''}"></span>
+      <span class="grow"><b>${esc(item.title)}</b><small>${done?'Done ✓':'Tap for steps'}</small></span>
+      <span class="arrow">›</span></button>`);
+    node.onclick = ()=>checkSheet(item, 'I clicked something bad', EMERGENCY);
+    nodes.push(node);
+  }
+  nodes.push(el(`<div class="hr"></div>`));
+  nodes.push(BigBtn({title:'Reset this checklist', arrow:false, onClick:async ()=>{
+    EMERGENCY.forEach(i=>{ delete S().lock.checklist[i.id]; });
+    await Vault.save(); Nav.refresh(); toast('Reset.');
+  }}));
+  return Screen('I clicked something bad', nodes);
+}
+
 /* =============== LINK CHECKER =============== */
 function renderLink(){
   const inp = el(`<input type="text" placeholder="Paste the link here" autocapitalize="off" autocorrect="off">`);
   const out = el(`<div></div>`);
+  const from = el(`<input type="email" placeholder="Who sent it? (optional email address)" autocapitalize="off">`);
   const btn = BigBtn({title:'Check it', primary:true, arrow:false, onClick:()=>{
-    const r = Tools.checkLink(inp.value);
+    const r = Phish.inspect(inp.value, { senderEmail: from.value.trim() });
+    const verdict = r.verdict==='block' ? 'DANGER — do not open'
+                  : r.verdict==='warn' ? 'Suspicious — be careful' : 'No red flags found';
     out.innerHTML = `<div class="card">
-      <h3>${esc(r.verdict)}</h3>
-      <p style="color:var(--fg)">Danger score: <b class="count">${r.risk}/100</b></p>
+      <h3>${esc(verdict)}</h3>
+      <p style="color:var(--fg)">Danger score: <b class="count">${r.risk}/100</b>${r.host?` · goes to <b>${esc(r.host)}</b>`:''}</p>
       ${r.reasons.map(x=>`<p>• ${esc(x)}</p>`).join('')}
-      ${r.risk>=30?`<p style="color:var(--fg)"><b>What to do:</b> don’t open it. If it claims to be your bank or a company, type their address yourself or use their app.</p>`:''}
+      ${r.risk>=30?`<p style="color:var(--fg)"><b>What to do:</b> don’t open it. If it claims to be your bank or a company, type their address yourself or use their app.</p>`:
+        `<p style="color:var(--fg)">Still: only ever log in on a site you opened yourself.</p>`}
     </div>`;
-    if(r.risk>=60){ Vault.log('Lock','Blocked a dangerous link'); Vault.save(); }
+    if(r.risk>=60){ Vault.log('Lock','Checked a dangerous link ('+(r.host||'?')+')'); Vault.save(); }
   }});
   return Screen('Is this link safe?', [
-    el(`<p class="sub">Got a weird text or email with a link? Paste it here <b>instead of tapping it</b>. Checked on your device — the link is never visited.</p>`),
-    inp, btn, out
+    el(`<p class="sub">Got a weird text or email with a link? Paste it here <b>instead of tapping it</b>. Checked on your device — the link is never visited. Adding the sender’s address makes the check sharper.</p>`),
+    inp, from, btn, out
   ]);
 }
 

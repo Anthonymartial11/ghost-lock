@@ -21,6 +21,8 @@ function counts(){
     pct: Math.round(100*done/total) };
 }
 function dot(status){ return `<span class="dot ${status==='done'?'done':status==='sent'?'pending':''}"></span>`; }
+/* Lock writes a yes/no shield flag; the vaults stay separate and encrypted. */
+function shieldOn(){ try{ return localStorage.getItem('gl_shield')==='1'; }catch(e){ return false; } }
 
 /* ---------- HOME ---------- */
 function renderHome(){
@@ -262,14 +264,39 @@ function renderInbox(){
 
 function deletionBody(snd){ return Tools.unsubscribeLetter(snd.name, S().profile); }
 
-/* Opening a sender's unsubscribe page = stepping onto THEIR turf.
-   Show the real domain first and warn: a real unsubscribe never needs a login. */
-function openUnsubLink(link){
-  let host = '';
-  try{ host = new URL(link).hostname; }catch(e){ return; }
-  confirmSheet('Open '+host+'?',
-    'Their unsubscribe page will open. A real unsubscribe never asks for a password or card number — if this one does, close it.',
-    'Open', ()=>Shell.openExternal(link));
+/* Opening a sender's unsubscribe page = stepping onto THEIR turf, and plenty of
+   "unsubscribe" links are phishing. Every link is inspected by the shared Phish
+   engine first. Dangerous ones are REFUSED — there is no "open anyway". */
+function openUnsubLink(link, senderEmail){
+  const v = Phish.inspect(link, { senderEmail });
+
+  if(v.verdict === 'block'){
+    Vault.log('Ghost','Blocked a dangerous link ('+(v.host||'unknown')+')');
+    Vault.save();
+    sheet('Blocked — this link is dangerous', [
+      el(`<div class="card"><h3>Ghost will not open this</h3>
+        <p style="color:var(--fg)">It goes to <b>${esc(v.host||'an unreadable address')}</b> and looks like a phishing trap, not an unsubscribe page.</p>
+        ${v.reasons.map(r=>`<p>• ${esc(r)}</p>`).join('')}</div>`),
+      el(`<p class="plain"><b>What to do instead:</b> don’t open it anywhere. In Mail, mark the message as junk/spam. If you want off their list, use the email route or just delete and block them.</p>`),
+      BigBtn({title:'Got it — keep it closed', primary:true, arrow:false, onClick:()=>{ document.querySelectorAll('.sheet,.sheet-bg').forEach(n=>n.remove()); }}),
+      BigBtn({title:'I already clicked one — open Lock', sub:'Emergency steps in the Lock app', arrow:false, onClick:()=>{ location.href='../lock/'; }})
+    ]);
+    return;
+  }
+
+  const warn = v.verdict === 'warn';
+  sheet(warn ? 'Careful — this looks suspicious' : 'Open '+v.host+'?', [
+    warn ? el(`<div class="card"><h3>Suspicious link</h3>${v.reasons.map(r=>`<p>• ${esc(r)}</p>`).join('')}</div>`) : null,
+    el(`<p class="plain">Goes to: <b>${esc(v.host)}</b></p>`),
+    el(`<p class="plain">A real unsubscribe page <b>never</b> asks for a password, card number, or a download. If it does, close it immediately.</p>`),
+    shieldOn() ? el(`<p class="tiny">Lock’s whole-device shield is ON — known malicious sites are blocked before they load.</p>`)
+               : el(`<p class="tiny">Lock’s whole-device shield is OFF. Turn it on in Lock to block known malicious sites automatically.</p>`),
+    BigBtn({title: warn ? 'Open anyway — I accept the risk' : 'Open the page', primary:!warn, arrow:false, onClick:()=>{
+      document.querySelectorAll('.sheet,.sheet-bg').forEach(n=>n.remove());
+      Shell.openExternal(v.url || link);
+    }}),
+    BigBtn({title:'Cancel', arrow:false, onClick:()=>{ document.querySelectorAll('.sheet,.sheet-bg').forEach(n=>n.remove()); }})
+  ]);
 }
 
 async function runBatch(list, label){
@@ -411,7 +438,7 @@ function senderSheet(snd, offline){
     }}) : null,
     (!canEmail && snd.mailto && !offline) ? el(`<p class="tiny">Their unsubscribe address is off their own domain, so Ghost won’t email it (that’s how spammers try to misuse your account). Use their unsubscribe page instead.</p>`) : null,
     escalating ? BigBtn({title:'Report them (FTC)', sub:'File a spam complaint at reportfraud.ftc.gov', arrow:false, onClick:()=>Shell.openExternal('https://reportfraud.ftc.gov/')}) : null,
-    snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>{ s.close(); openUnsubLink(snd.link); }}) : null,
+    snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>{ s.close(); openUnsubLink(snd.link, snd.email); }}) : null,
     (!snd.mailto && !snd.link) ? el(`<p class="tiny">They offer no unsubscribe channel — that itself violates CAN-SPAM. Mark their emails as spam in Mail, and add them to your junk tracker.</p>`) : null,
     el(`<div class="hr"></div>`),
     BigBtn({title:'Mark as done', arrow:false, onClick:async ()=>{

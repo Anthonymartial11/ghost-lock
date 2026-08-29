@@ -303,26 +303,80 @@ function renderScanList(nodes, scan, offline){
 
   nodes.push(el(`<p class="sub">${scan.senders.length} marketing senders · ${pending.length} not handled yet. ${offline?'(from your last scan)':''}</p>`));
 
-  if(!offline && oneTap.length > 1){
-    nodes.push(BigBtn({title:`Unsubscribe + delete — all ${oneTap.length}`, primary:true, arrow:false, onClick:()=>{
-      confirmSheet('Handle '+oneTap.length+' senders?',
-        'For each: an unsubscribe AND a CCPA/GDPR demand to delete your data and stop selling it — sent from your Gmail. Nothing else is sent.',
-        'Send them all', ()=>runBatch(oneTap, 'Batch unsubscribe + delete'));
-    }}));
+  if(!offline && oneTap.length){
+    nodes.push(BigBtn({title:`Review & send — ${oneTap.length} waiting`, sub:'You approve exactly who gets removed. Nothing sends yet.',
+      primary:true, arrow:false, onClick:()=>Nav.go(renderBatchReview)}));
   }
 
-  for(const snd of pending.concat(scan.senders.filter(x=>x.status==='sent'||x.status==='skip'))){
+  const kept = scan.senders.filter(x=>x.status==='keep'||x.status==='skip');
+  for(const snd of pending.concat(scan.senders.filter(x=>x.status==='sent'))){
     nodes.push(senderRow(snd, offline));
   }
+  if(kept.length){
+    nodes.push(el(`<div class="hr"></div>`));
+    nodes.push(el(`<p class="sub">Kept senders (${kept.length}) — protected, never included in any send:</p>`));
+    for(const snd of kept) nodes.push(senderRow(snd, offline));
+  }
+}
+
+/* The careful-approval screen: every waiting sender listed with a mark.
+   Filled mark = will be sent. Tap to spare one. Then one send, one confirm. */
+function renderBatchReview(){
+  const scan = S().ghost.scan;
+  const list = (scan?.senders||[]).filter(x=>x.status==='todo' && x.mailto);
+  if(!list.length) return Screen('Review & send', [el(`<p class="center-note">Nothing waiting for approval.</p>`)]);
+
+  const sel = new Set(list.map(x=>x.email));            // start with all marked
+  const head = el(`<p class="sub"></p>`);
+  const sendBtn = BigBtn({title:'', primary:true, arrow:false, onClick:()=>{
+    const chosen = list.filter(x=>sel.has(x.email));
+    if(!chosen.length) return;
+    confirmSheet('Send to '+chosen.length+' sender'+(chosen.length>1?'s':'')+'?',
+      'Each gets an unsubscribe AND a CCPA/GDPR demand to delete your data — sent from your Gmail. The unmarked ones are untouched.',
+      'Send', ()=>runBatch(chosen, 'Approved batch unsubscribe + delete'));
+  }});
+  const toggleAll = el(`<button class="btn btn-outline" style="justify-content:center">Unmark all</button>`);
+
+  const upd = ()=>{
+    head.innerHTML = `<b>${sel.size}</b> of ${list.length} marked for removal. Tap a sender to spare it. Filled mark = gets the unsubscribe + deletion demand.`;
+    sendBtn.querySelector('.txt').textContent = sel.size ? `Send to ${sel.size} marked sender${sel.size>1?'s':''}` : 'Nothing marked';
+    sendBtn.disabled = !sel.size;
+    toggleAll.textContent = sel.size===list.length ? 'Unmark all' : 'Mark all';
+  };
+
+  const rows = list.map(snd=>{
+    const row = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
+      <span class="dot done"></span>
+      <span class="grow"><b>${esc(snd.name)}</b><small>${esc(snd.email)} · ${snd.count} email${snd.count>1?'s':''}</small></span>
+    </button>`);
+    row.onclick = ()=>{
+      if(sel.has(snd.email)) sel.delete(snd.email); else sel.add(snd.email);
+      row.querySelector('.dot').className = 'dot '+(sel.has(snd.email)?'done':'');
+      upd();
+    };
+    return row;
+  });
+
+  toggleAll.onclick = ()=>{
+    if(sel.size===list.length) sel.clear(); else list.forEach(x=>sel.add(x.email));
+    rows.forEach((row,i)=>{ row.querySelector('.dot').className = 'dot '+(sel.has(list[i].email)?'done':''); });
+    upd();
+  };
+
+  upd();
+  return Screen('Review & send', [head, sendBtn, toggleAll,
+    el(`<p class="tiny">Want one gone from this list forever? Go back, open it, and choose “Keep this sender”.</p>`),
+    ...rows]);
 }
 
 function senderRow(snd, offline){
   const method = snd.mailto ? 'Unsubscribe + delete' : snd.link ? 'Unsubscribe link' : 'No unsubscribe offered';
+  const kept = snd.status==='keep'||snd.status==='skip';
   const stText = snd.status==='sent' ? 'Handled ✓'
     : snd.status==='stillEmailing' ? 'STILL EMAILING — escalate'
-    : snd.status==='skip' ? 'Skipped'
+    : kept ? 'Kept — will never be touched'
     : method+' · '+snd.count+' emails';
-  const dotState = snd.status==='sent'?'done': snd.status==='skip'?'sent': snd.status==='stillEmailing'?'pending':'todo';
+  const dotState = snd.status==='sent'?'done': snd.status==='stillEmailing'?'pending':'todo';
   const item = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
     ${dot(dotState)}
     <span class="grow"><b>${esc(snd.name)}</b><small>${esc(stText)}</small></span>
@@ -350,8 +404,8 @@ function senderSheet(snd, offline){
     BigBtn({title:'Mark as done', arrow:false, onClick:async ()=>{
       snd.status='sent'; await Vault.save(); s.close(); Nav.refresh();
     }}),
-    BigBtn({title:'Skip this sender', arrow:false, onClick:async ()=>{
-      snd.status='skip'; await Vault.save(); s.close(); Nav.refresh();
+    BigBtn({title:'Keep this sender — never touch it', sub:'Protected from every send, including batches', arrow:false, onClick:async ()=>{
+      snd.status='keep'; await Vault.save(); s.close(); Nav.refresh(); toast('Kept. It can never be included in a send.');
     }}),
     BigBtn({title:'Add to my junk tracker', arrow:false, onClick:async ()=>{
       S().ghost.unsubs.unshift({name:snd.name, email:snd.email, status:'todo', t:Date.now()});

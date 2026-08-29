@@ -203,7 +203,7 @@ function renderInbox(){
   }
 
   if(!Gmail.connected()){
-    nodes.push(el(`<p class="plain"><b>What this does:</b> connects to your Gmail and reads only the <b>labels on the envelopes</b> across your Promotions, Updates and Social mail — who sent it and their unsubscribe instructions. It cannot read the letters inside. Then <b>you</b> fire off, for each junk sender, an unsubscribe <b>and</b> a legal demand to delete your data. Scan again later and it flags anyone who kept emailing you.</p>`));
+    nodes.push(el(`<p class="plain"><b>What this does:</b> connects to your Gmail and reads only the <b>labels on the envelopes</b> across your whole inbox — Primary included, since promos sneak in there. It cannot read the letters inside. It lists only senders using bulk-mail machinery (the unsubscribe header) — <b>real people can never appear</b>. Then <b>you</b> fire off, for each junk sender, an unsubscribe <b>and</b> a legal demand to delete your data. Scan again later and it flags anyone who kept emailing you.</p>`));
     nodes.push(el(`<p class="plain"><b>What happens when you tap Connect:</b> you go to Google’s own sign-in, approve, and come back. The app will be locked when you return (that’s the auto-lock doing its job) — unlock and the connection is live for about an hour.</p>`));
     nodes.push(BigBtn({title:'Connect my Gmail', primary:true, arrow:false, onClick:()=>Gmail.connect()}));
     const scan = S().ghost.scan;
@@ -216,7 +216,7 @@ function renderInbox(){
 
   const out = el(`<div></div>`);
   const scanBtn = BigBtn({title: already?'Re-check my inbox':'Scan my inbox now', sub: already?'Finds new junk + flags anyone still emailing you':'', primary:true, arrow:false, onClick:async ()=>{
-    scanBtn.disabled = true; out.innerHTML = `<p class="center-note">Scanning Promotions, Updates & Social — envelope headers only…</p>`;
+    scanBtn.disabled = true; out.innerHTML = `<p class="center-note">Scanning your inbox — Primary included, envelope headers only…</p>`;
     try{
       const senders = await Gmail.scan((n,total)=>{ out.innerHTML = `<p class="center-note">Checked ${n}${total?' of '+total:''} messages…</p>`; });
       const prev = S().ghost.scan?.senders || [];

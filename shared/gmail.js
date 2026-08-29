@@ -122,15 +122,17 @@ const Gmail = {
     return r.json();
   },
 
-  /* Scan bulk mail across ALL the tabs where marketing lands (Promotions,
-     Updates, Social) and several pages deep — headers only. A sender counts as
-     "marketing" only if at least one of its messages carries a List-Unsubscribe
-     header, which keeps personal/transactional mail out of the list.
+  /* Scan bulk mail across ALL tabs — including Primary, because plenty of
+     marketing sneaks in there — several pages deep, headers only. The human
+     shield is the header filter, not the tab: a sender is listed ONLY if its
+     mail carries a List-Unsubscribe header (bulk/marketing infrastructure).
+     Real people's emails never have that header, so they can never appear,
+     even when scanning Primary.
      Returns senders: {name, email, count, mailto, link, subject, lastSeen}
      where lastSeen is the newest message time (ms) — used for re-checks. */
   async scan(onProgress){
-    const LABELS = ['CATEGORY_PROMOTIONS','CATEGORY_UPDATES','CATEGORY_SOCIAL'];
-    const PAGES = 3;                 // up to 300 messages per tab (~900 total)
+    const LABELS = ['CATEGORY_PERSONAL','CATEGORY_PROMOTIONS','CATEGORY_UPDATES','CATEGORY_SOCIAL'];
+    const PAGES = 3;                 // up to 300 messages per tab (~1200 total)
     const idSet = new Set();
     for(const label of LABELS){
       let pageToken = '';

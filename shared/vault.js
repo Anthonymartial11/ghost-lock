@@ -146,7 +146,13 @@ const Vault = {
     const blob = await kvGet('data');
     if(!blob){ this.state = freshState(); return; }
     const json = await aesDecrypt(this.key, blob);
-    this.state = Object.assign(freshState(), JSON.parse(json));
+    const loaded = Object.assign(freshState(), JSON.parse(json));
+    // Older vaults won't have newer profile fields — fill the gaps rather than
+    // leaving them undefined.
+    loaded.profile = Object.assign(freshState().profile, loaded.profile || {});
+    loaded.ghost = Object.assign(freshState().ghost, loaded.ghost || {});
+    loaded.lock = Object.assign(freshState().lock, loaded.lock || {});
+    this.state = loaded;
   },
 
   async save(){
@@ -171,7 +177,12 @@ const Vault = {
 
 function freshState(){
   return {
-    profile:{ name:'', emails:[], phones:[], usernames:[], city:'', state:'' },
+    /* The identifiers data brokers actually index you by. The more of these are
+       filled, the harder it is for a company to claim they "couldn't locate"
+       your record — which is the standard dodge. */
+    profile:{ name:'', otherNames:'', birthYear:'', emails:[], phones:[],
+              usernames:[], street:'', city:'', state:'', zip:'',
+              pastAddresses:[], relatives:'' },
     ghost:{ brokers:{}, accounts:{}, unsubs:[], bigtech:{} },  // brokers/accounts: id -> 'todo'|'sent'|'done'|'na'
     lock:{ checklist:{}, dnsDone:false },
     log:[]

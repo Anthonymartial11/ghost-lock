@@ -96,10 +96,17 @@ const Tools = {
 
   /* ---- 4) letter writer ---- */
   deletionLetter(brokerName, profile){
-    const name = profile.name || '[YOUR NAME]';
-    const emails = profile.emails.length? profile.emails.join(', ') : '[YOUR EMAIL]';
-    const phones = profile.phones.length? profile.phones.join(', ') : '';
-    const loc = [profile.city, profile.state].filter(Boolean).join(', ');
+    const p = profile || {};
+    const name = p.name || '[YOUR NAME]';
+    const emails = (p.emails||[]).length? p.emails.join(', ') : '[YOUR EMAIL]';
+    const phones = (p.phones||[]).length? p.phones.join(', ') : '';
+    const loc = [p.street, p.city, p.state, p.zip].filter(Boolean).join(', ');
+    const extra = [
+      p.otherNames ? `- Also known as: ${p.otherNames}` : '',
+      p.birthYear ? `- Year of birth: ${p.birthYear}` : '',
+      (p.pastAddresses||[]).length ? `- Previous addresses: ${p.pastAddresses.join(' | ')}` : '',
+      p.relatives ? `- Associated names on record: ${p.relatives}` : ''
+    ].filter(Boolean).join('\n');
     return `To: ${brokerName} — Privacy / Data Protection Officer
 
 Subject: Request to DELETE my personal information (CCPA / CPRA & GDPR)
@@ -119,11 +126,15 @@ I am formally requesting that you:
 
 Information to identify my records:
 - Name: ${name}
-- Email(s): ${emails}${phones?`\n- Phone(s): ${phones}`:''}${loc?`\n- Location: ${loc}`:''}
+- Email(s): ${emails}${phones?`\n- Phone(s): ${phones}`:''}${loc?`\n- Address: ${loc}`:''}${extra?`\n${extra}`:''}
+
+These identifiers are provided so that you cannot claim to be unable to locate
+my records. If any record is held under a variant of the above, this request
+covers that record too.
 
 Please treat this as a verifiable consumer request. You are required to
 respond within 45 days under the CCPA. Do not use this information for any
-purpose other than processing this request.
+purpose other than processing this request, and do not retain it afterwards.
 
 Regards,
 ${name}`;

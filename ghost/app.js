@@ -66,6 +66,11 @@ function renderHome(){
   body.appendChild(BigBtn({title:'Was I leaked?',
     sub:'Check passwords & emails against known breaches', onClick:()=>Nav.go(renderLeaks)}));
 
+  const stg = Profile.strength(S().profile);
+  body.appendChild(BigBtn({title:'My details',
+    sub:`Demand strength ${stg.pct}% — stronger details, harder to refuse`,
+    badge: stg.pct<100 ? String(stg.pct)+'%' : '', onClick:()=>Nav.go(Profile.render)}));
+
   body.appendChild(BigBtn({title:'Activity log', onClick:()=>Nav.go(renderLog)}));
   body.appendChild(BigBtn({title:'Settings', onClick:()=>Shell.openSettings()}));
   return scr;

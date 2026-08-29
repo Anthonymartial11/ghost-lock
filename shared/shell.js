@@ -283,22 +283,10 @@ const Shell = {
   openSettings(){
     Nav.go(()=>{
       const nodes=[];
-      const s = Vault.state;
-      nodes.push(el(`<p class="sub">Your info — used to find you online. Stays on this device.</p>`));
-      const name = el(`<input type="text" placeholder="Your name" value="${esc(s.profile.name)}">`);
-      const emails = el(`<input type="text" placeholder="Emails (comma separated)" value="${esc(s.profile.emails.join(', '))}">`);
-      const phones = el(`<input type="text" placeholder="Phone numbers (comma separated)" value="${esc(s.profile.phones.join(', '))}">`);
-      const city = el(`<input type="text" placeholder="City" value="${esc(s.profile.city)}">`);
-      const st = el(`<input type="text" placeholder="State" value="${esc(s.profile.state)}">`);
-      const save = BigBtn({title:'Save my info', primary:true, arrow:false, onClick:async ()=>{
-        s.profile.name=name.value.trim();
-        s.profile.emails=emails.value.split(',').map(x=>x.trim()).filter(Boolean);
-        s.profile.phones=phones.value.split(',').map(x=>x.trim()).filter(Boolean);
-        s.profile.city=city.value.trim(); s.profile.state=st.value.trim();
-        await Vault.save(); toast('Saved'); Nav.back();
-      }});
-      nodes.push(el('<label>Name</label>'),name,el('<label>Emails</label>'),emails,
-        el('<label>Phone</label>'),phones,el('<label>City</label>'),city,el('<label>State</label>'),st, save);
+      const stg = window.Profile ? Profile.strength(Vault.state.profile) : null;
+      nodes.push(BigBtn({title:'My details',
+        sub: stg ? `Demand strength ${stg.pct}% — the info your removal letters use` : 'The info your removal letters use',
+        onClick:()=>Nav.go(Profile.render)}));
 
       nodes.push(el(`<div class="hr"></div>`));
       // Face ID toggle

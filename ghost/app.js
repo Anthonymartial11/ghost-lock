@@ -217,17 +217,25 @@ function renderInbox(){
   const scanBtn = BigBtn({title:'Scan my inbox now', primary:true, arrow:false, onClick:async ()=>{
     scanBtn.disabled = true; out.innerHTML = `<p class="center-note">Scanning… this reads envelope headers only.</p>`;
     try{
-      const senders = await Gmail.scan(n=>{ out.innerHTML = `<p class="center-note">Checked ${n} messages…</p>`; });
-      const old = {}; (S().ghost.scan?.senders||[]).forEach(x=>{ old[x.email]=x.status; });
-      S().ghost.scan = { t: Date.now(), senders: senders.map(x=>({ ...x, status: old[x.email]||'todo' })) };
+      const senders = await Gmail.scan((n,total)=>{ out.innerHTML = `<p class="center-note">Checked ${n}${total?' of '+total:''} messages…</p>`; });
+      const prev = S().ghost.scan?.senders || [];
+      const oldStatus = {}; prev.forEach(x=>{ oldStatus[x.email]=x.status; });
+      // Merge: keep any previously found sender the new scan didn't return, so a
+      // slightly-incomplete scan never loses senders you were already tracking.
+      const merged = senders.map(x=>({ ...x, status: oldStatus[x.email]||'todo' }));
+      const seen = new Set(senders.map(x=>x.email));
+      prev.forEach(x=>{ if(!seen.has(x.email)) merged.push(x); });
+      S().ghost.scan = { t: Date.now(), senders: merged };
       Vault.log('Ghost','Scanned inbox: '+senders.length+' marketing senders found');
       await Vault.save();
       Nav.refresh();
     }catch(e){
       scanBtn.disabled = false;
       out.innerHTML = '';
-      toast(e.message==='reconnect' ? 'Google session expired — tap Connect again' : 'Scan failed. Try again.');
-      if(e.message==='reconnect') Nav.refresh();
+      if(e.partial || e.message==='partial') toast('Connection was patchy — kept your last results. Try again.');
+      else if(e.message==='reconnect'){ toast('Google session ended — tap Connect again.'); Nav.refresh(); }
+      else if(e.message==='busy') toast('Google is rate-limiting — wait a moment and retry.');
+      else toast('Scan failed. Try again.');
     }
   }});
   nodes.push(scanBtn, out);
@@ -252,13 +260,19 @@ function renderScanList(nodes, scan, offline){
       confirmSheet('Send '+oneTap.length+' unsubscribe emails?',
         'One unsubscribe email goes to each of these senders from your Gmail. Nothing else is sent.',
         'Send them', async ()=>{
-        let sent=0;
+        let sent=0, failed=0, stopped=false;
         for(const snd of oneTap){
           try{ await Gmail.sendUnsubscribe(snd); snd.status='sent'; sent++; }
-          catch(e){ if(e.message==='reconnect'){ toast('Google session expired — reconnect to continue'); break; } }
+          catch(e){
+            if(e.message==='reconnect'){ stopped=true; break; }   // dead token — stop, don't fail silently
+            failed++;                                             // this one didn't go; keep going
+          }
         }
         Vault.log('Ghost','Sent '+sent+' unsubscribe emails');
-        await Vault.save(); Nav.refresh(); toast(sent+' unsubscribe emails sent.');
+        await Vault.save(); Nav.refresh();
+        if(stopped) toast('Sent '+sent+'. Google session ended — reconnect to finish the rest.');
+        else if(failed) toast('Sent '+sent+'. '+failed+' could not be sent — try those again.');
+        else toast(sent+' unsubscribe emails sent.');
       });
     }}));
   }

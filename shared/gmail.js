@@ -35,6 +35,14 @@ const Gmail = {
   connected(){ return !!token && Date.now() < tokenExp - 30000; },
   account(){ return account; },
 
+  /* The redirect target must EXACTLY match what's registered in Google Cloud.
+     Normalize so /ghost/ and /ghost/index.html both resolve to the same URI. */
+  _redirectUri(){
+    let p = location.pathname.replace(/index\.html$/, '');
+    if(!p.endsWith('/')) p += '/';
+    return location.origin + p;
+  },
+
   /* Step out to Google's own sign-in page, come back with a short-lived key. */
   connect(){
     if(!this.configured()) return;
@@ -42,11 +50,12 @@ const Gmail = {
     try{ sessionStorage.setItem('gm_state', state); }catch(e){}
     const p = new URLSearchParams({
       client_id: GMAIL_CONFIG.clientId,
-      redirect_uri: location.origin + location.pathname,
+      redirect_uri: this._redirectUri(),
       response_type: 'token',
       scope: SCOPES,
       state,
-      include_granted_scopes: 'true'
+      include_granted_scopes: 'true',
+      prompt: 'consent'
     });
     location.href = AUTH_URL + '?' + p.toString();
   },
@@ -83,11 +92,33 @@ const Gmail = {
     token = null; tokenExp = 0; account = '';
   },
 
+  /* One caller for every Google request. Distinguishes the failure modes:
+     - not connected / 401  -> 'reconnect' (token is dead; clear it)
+     - 403 / 429            -> back off and retry (usually rate-limit bursts);
+                               if it never clears, surface 'reconnect'
+     - network hiccup       -> retry; if it never clears, surface 'busy' */
+  _backoff(attempt){ return new Promise(r=>setTimeout(r, 400*Math.pow(2,attempt) + Math.random()*250)); },
+
+  async _call(url, opts){
+    if(!this.connected()){ token=null; tokenExp=0; throw new Error('reconnect'); }
+    opts = opts || {};
+    opts.headers = Object.assign({}, opts.headers, { Authorization:'Bearer '+token });
+    let sawForbidden = false;
+    for(let attempt=0; attempt<4; attempt++){
+      let r;
+      try{ r = await fetch(url, opts); }
+      catch(e){ await this._backoff(attempt); continue; }        // network blip -> retry
+      if(r.status === 401){ token=null; tokenExp=0; throw new Error('reconnect'); }
+      if(r.status === 403 || r.status === 429){ sawForbidden = (r.status===403); await this._backoff(attempt); continue; }
+      if(!r.ok) throw new Error('http '+r.status);
+      return r;
+    }
+    if(sawForbidden){ token=null; tokenExp=0; throw new Error('reconnect'); } // persistent 403 = likely revoked
+    throw new Error('busy');                                                  // rate-limited / network
+  },
+
   async _api(path){
-    if(!this.connected()) throw new Error('not connected');
-    const r = await fetch(API + path, {headers:{Authorization:'Bearer '+token}});
-    if(r.status === 401 || r.status === 403){ token = null; throw new Error('reconnect'); }
-    if(!r.ok) throw new Error('gmail '+r.status);
+    const r = await this._call(API + path);
     return r.json();
   },
 
@@ -105,8 +136,9 @@ const Gmail = {
       if(!pageToken) break;
     }
 
+    const total = ids.length;
     const senders = new Map();
-    let done = 0;
+    let done = 0, failed = 0;
     const worker = async ()=>{
       while(ids.length){
         const id = ids.shift();
@@ -117,21 +149,30 @@ const Gmail = {
           ((m.payload||{}).headers||[]).forEach(h=>{ hs[h.name.toLowerCase()] = h.value; });
           const from = hs['from'] || '';
           const em = (from.match(/<([^>]+)>/) || [null, from.trim()])[1].toLowerCase();
-          if(!em || !em.includes('@')) continue;
-          const name = from.replace(/<[^>]*>/,'').replace(/"/g,'').trim() || em;
-          const unsub = hs['list-unsubscribe'] || '';
-          const mailto = (unsub.match(/<mailto:([^>]+)>/i) || [])[1] || '';
-          const link = (unsub.match(/<(https?:[^>]+)>/i) || [])[1] || '';
-          const cur = senders.get(em) || {name, email:em, count:0, mailto:'', link:'', subject:hs['subject']||''};
-          cur.count++;
-          if(mailto) cur.mailto = mailto;
-          if(link) cur.link = link;
-          senders.set(em, cur);
-        }catch(e){ if(e.message==='reconnect') throw e; }
-        done++; if(onProgress) onProgress(done);
+          if(em && em.includes('@')){
+            const name = from.replace(/<[^>]*>/,'').replace(/"/g,'').trim() || em;
+            const unsub = hs['list-unsubscribe'] || '';
+            const mailto = (unsub.match(/<mailto:([^>]+)>/i) || [])[1] || '';
+            const link = (unsub.match(/<(https?:[^>]+)>/i) || [])[1] || '';
+            const cur = senders.get(em) || {name, email:em, count:0, mailto:'', link:'', subject:hs['subject']||''};
+            cur.count++;
+            if(mailto) cur.mailto = mailto;
+            if(link) cur.link = link;
+            senders.set(em, cur);
+          }
+        }catch(e){
+          if(e.message==='reconnect') throw e;   // dead token -> abort loudly
+          failed++;                              // transient failure -> count it, keep going
+        }
+        done++; if(onProgress) onProgress(done, total);
       }
     };
-    await Promise.all([worker(),worker(),worker(),worker(),worker(),worker(),worker(),worker()]);
+    await Promise.all([worker(),worker(),worker(),worker()]);
+    // Don't pass off a partial scan as a complete one: if too much failed,
+    // the caller keeps the previous good scan instead of overwriting it.
+    if(total > 0 && failed > Math.max(3, total*0.2)){
+      const err = new Error('partial'); err.partial = true; throw err;
+    }
     return [...senders.values()].sort((a,b)=>b.count-a.count);
   },
 
@@ -158,12 +199,11 @@ const Gmail = {
       '\r\n' + body;
     const b64url = btoa(unescape(encodeURIComponent(raw)))
       .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    const r = await fetch(API + '/messages/send', {
+    await this._call(API + '/messages/send', {         // shares the expiry gate + 401->reconnect
       method:'POST',
-      headers:{ Authorization:'Bearer '+token, 'Content-Type':'application/json' },
+      headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ raw: b64url })
     });
-    if(!r.ok) throw new Error('send failed '+r.status);
     return true;
   }
 };

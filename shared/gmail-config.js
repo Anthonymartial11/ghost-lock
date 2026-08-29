@@ -9,5 +9,5 @@
  * and redeploy. Empty = the inbox-scan feature shows setup instructions.
  */
 window.GMAIL_CONFIG = {
-  clientId: ''
+  clientId: '465466765788-v10gfr77o4d6tvd5ri8o34k6sdkm2ivj.apps.googleusercontent.com'
 };

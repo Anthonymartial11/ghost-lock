@@ -190,6 +190,55 @@ function renderDns(){
   }}));
 
   nodes.push(el(`<div class="hr"></div>`));
+  nodes.push(el(`<p class="sub">Profile won’t install?</p>`));
+
+  nodes.push(BigBtn({title:'It said “VPN service could not be created”', sub:'What that means and how to fix it', arrow:false, onClick:()=>{
+    sheet('“The VPN service could not be created”', [
+      el(`<p class="plain">iOS builds this shield as a background network service. That message means iOS refused to create it — almost always for one of four reasons, in order of likelihood:</p>`),
+      el(`<ol class="plain" style="padding-left:22px">
+        <li><b>You installed it from inside the app.</b> iOS only accepts profiles downloaded through <b>Safari</b>. Open the Lock address in Safari and download it there.</li>
+        <li><b>Something else already controls your DNS.</b> A VPN app, or AdGuard/NextDNS/Cloudflare/Control D, or an older copy of this profile. Only one can exist at a time.</li>
+        <li><b>A half-installed copy is stuck.</b> Delete it, then install fresh.</li>
+        <li><b>A work/school profile</b> restricts adding network configurations.</li>
+      </ol>`),
+      el(`<p class="plain"><b>Do this, in order:</b></p>`),
+      el(`<ol class="plain" style="padding-left:22px">
+        <li>Settings → General → <b>VPN &amp; Device Management</b> — delete any “Lock — DNS Shield” already there</li>
+        <li>Settings → General → <b>VPN</b> — turn off / delete any VPN configuration</li>
+        <li>Restart the iPhone</li>
+        <li>Open this page <b>in Safari</b> (not the installed app) and download again</li>
+        <li>Still failing? Use the <b>Standard</b> profile below, or set DNS by hand — that always works</li>
+      </ol>`)
+    ]);
+  }}));
+
+  nodes.push(BigBtn({title:'Try the Standard profile instead', sub:'Plain DNS — simpler, installs where the encrypted one fails', arrow:false, onClick:()=>{
+    downloadProfile('plain');
+    toast('Downloaded the Standard profile. Install it the same way.');
+  }}));
+
+  nodes.push(BigBtn({title:'No profile — set DNS by hand', sub:'Always works. Nothing to install.', arrow:false, onClick:()=>{
+    sheet('Set the shield by hand', [
+      el(`<p class="plain">This needs no profile at all. The catch: you set it <b>per Wi-Fi network</b>, so repeat it on your home and work Wi-Fi. It does not cover mobile data.</p>`),
+      el(`<p class="plain"><b>iPhone:</b></p>`),
+      el(`<ol class="plain" style="padding-left:22px;margin-top:0">
+        <li>Settings → <b>Wi-Fi</b></li>
+        <li>Tap the <b>ⓘ</b> next to your network</li>
+        <li><b>Configure DNS</b> → <b>Manual</b></li>
+        <li>Remove the existing servers, then <b>Add Server</b>:<br><b>94.140.14.14</b><br><b>94.140.15.15</b></li>
+        <li><b>Save</b></li>
+      </ol>`),
+      el(`<p class="plain"><b>Mac:</b></p>`),
+      el(`<ol class="plain" style="padding-left:22px;margin-top:0">
+        <li>System Settings → <b>Network</b> → your connection → <b>Details…</b></li>
+        <li><b>DNS</b> → remove what's there → <b>+</b> and add both addresses above</li>
+        <li><b>OK</b>, then <b>Apply</b></li>
+      </ol>`),
+      el(`<p class="tiny">To undo: set Configure DNS back to Automatic.</p>`)
+    ]);
+  }}));
+
+  nodes.push(el(`<div class="hr"></div>`));
   nodes.push(BigBtn({title: on?'✓ Shield is ON':'The test says I’m protected', primary:!on, arrow:false, onClick:async ()=>{
     S().lock.dnsDone = !on;
     // Non-sensitive status flag so Ghost can tell you whether the shield is up.
@@ -208,7 +257,8 @@ function uuid(){
     ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
 }
 
-function downloadProfile(){
+function downloadProfile(mode){
+  const encrypted = mode !== 'plain';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -218,15 +268,12 @@ function downloadProfile(){
     <dict>
       <key>DNSSettings</key>
       <dict>
-        <key>DNSProtocol</key><string>HTTPS</string>
-        <key>ServerURL</key><string>https://dns.adguard-dns.com/dns-query</string>
+        ${encrypted
+          ? `<key>DNSProtocol</key><string>HTTPS</string>
+        <key>ServerURL</key><string>https://dns.adguard-dns.com/dns-query</string>`
+          : `<key>DNSProtocol</key><string>Cleartext</string>
         <key>ServerAddresses</key>
-        <array>
-          <string>94.140.14.14</string>
-          <string>94.140.15.15</string>
-          <string>2a10:50c0::ad1:ff</string>
-          <string>2a10:50c0::ad2:ff</string>
-        </array>
+        <array><string>94.140.14.14</string><string>94.140.15.15</string></array>`}
       </dict>
       <key>PayloadDescription</key><string>Blocks ads, trackers and known malicious sites via AdGuard public DNS.</string>
       <key>PayloadDisplayName</key><string>Lock — DNS Shield</string>
@@ -249,7 +296,7 @@ function downloadProfile(){
   const blob = new Blob([xml], {type:'application/x-apple-aspen-config'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'Lock-DNS-Shield.mobileconfig';
+  a.download = encrypted ? 'Lock-DNS-Shield.mobileconfig' : 'Lock-DNS-Shield-Standard.mobileconfig';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
 }

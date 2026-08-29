@@ -16,11 +16,15 @@ const { el, esc, Nav, Screen, BigBtn, toast, sheet, confirmSheet } = UI;
 /* --- vCard parsing (local file, never leaves the device) --- */
 function parseVCard(text){
   const out = { name:'', emails:[], phones:[], street:'', city:'', state:'', zip:'', birthYear:'' };
-  const unfold = String(text).replace(/\r\n[ \t]/g,'').replace(/\n[ \t]/g,'');
-  for(const line of unfold.split(/\r?\n/)){
+  const unfold = String(text).slice(0, 512*1024)          // never chew a huge file
+    .replace(/\r\n[ \t]/g,'').replace(/\n[ \t]/g,'');
+  const clean = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim().slice(0,200);
+  for(const line of unfold.split(/\r?\n/).slice(0, 5000)){
     const i = line.indexOf(':'); if(i < 0) continue;
-    const key = line.slice(0,i).toUpperCase();
-    const val = line.slice(i+1).trim();
+    // Apple/Google export grouped properties like "item1.EMAIL;type=..." —
+    // strip the group prefix or the whole field is silently dropped.
+    const key = line.slice(0,i).toUpperCase().replace(/^[A-Z0-9-]+\./,'');
+    const val = clean(line.slice(i+1));
     if(!val) continue;
     if(key === 'FN' || key.startsWith('FN;')) out.name = out.name || val;
     else if(key === 'N' || key.startsWith('N;')){
@@ -35,8 +39,8 @@ function parseVCard(text){
     }
     else if(key.startsWith('BDAY')){ const m = val.match(/(\d{4})/); if(m) out.birthYear = m[1]; }
   }
-  out.emails = [...new Set(out.emails)];
-  out.phones = [...new Set(out.phones)];
+  out.emails = [...new Set(out.emails)].slice(0,20);
+  out.phones = [...new Set(out.phones)].slice(0,20);
   return out;
 }
 
@@ -87,8 +91,12 @@ function renderProfile(){
       p.street = p.street || v.street; p.city = p.city || v.city;
       p.state = p.state || v.state; p.zip = p.zip || v.zip;
       p.birthYear = p.birthYear || v.birthYear;
-      await Vault.save(); Nav.refresh(); toast('Imported from your contact card.');
+      const ok = await Vault.save();
+      Nav.refresh();
+      toast(ok === false ? 'Imported, but the app locked before saving — unlock and try again.'
+                         : 'Imported from your contact card.');
     }catch(e){ toast('Couldn’t read that file.'); }
+    finally{ try{ file.value=''; }catch(e){} }
   });
   nodes.push(el(`<div class="hr"></div>`));
   nodes.push(BigBtn({title:'Import my contact card', sub:'Fastest way — read on this device, never uploaded', primary:st.pct<40, arrow:false, onClick:()=>file.click()}));

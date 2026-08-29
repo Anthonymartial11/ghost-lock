@@ -107,9 +107,12 @@ const Gmail = {
   _backoff(attempt){ return new Promise(r=>setTimeout(r, 400*Math.pow(2,attempt) + Math.random()*250)); },
 
   async _call(url, opts){
-    // A locked app gets NOTHING: even from a debug console, Gmail can't be used
-    // unless the vault is open (and the raw token is unreadable from outside).
-    if(!(window.Vault && Vault.key)) throw new Error('locked');
+    // A locked app gets NOTHING. Checking the key is a REAL CryptoKey (not just
+    // truthy) stops a hostile script from faking `Vault.key = true` to unlock
+    // the send capability without ever knowing the password.
+    if(!(window.Vault && typeof CryptoKey !== 'undefined' && Vault.key instanceof CryptoKey)){
+      throw new Error('locked');
+    }
     if(!this.connected()){ token=null; tokenExp=0; throw new Error('reconnect'); }
     opts = opts || {};
     opts.headers = Object.assign({}, opts.headers, { Authorization:'Bearer '+token });
@@ -175,12 +178,16 @@ const Gmail = {
             const unsub = hs['list-unsubscribe'] || '';
             const mailto = (unsub.match(/<mailto:([^>]+)>/i) || [])[1] || '';
             const link = (unsub.match(/<(https?:[^>]+)>/i) || [])[1] || '';
-            const cur = senders.get(em) || {name, email:em, count:0, mailto:'', link:'', subject:hs['subject']||'', lastSeen:0, hasUnsub:false};
+            const cap = (s,n)=>String(s||'').slice(0,n);
+            const cur = senders.get(em) || {name:cap(name,120), email:cap(em,160), count:0,
+              mailto:'', link:'', subject:cap(hs['subject'],120), lastSeen:0, hasUnsub:false};
             cur.count++;
             if(when > cur.lastSeen) cur.lastSeen = when;
-            if(mailto){ cur.mailto = mailto; cur.hasUnsub = true; }
-            if(link){ cur.link = link; cur.hasUnsub = true; }
-            senders.set(em, cur);
+            // Header values are attacker-controlled: cap them so a hostile
+            // sender can't bloat the vault (which once broke saving entirely).
+            if(mailto){ cur.mailto = cap(mailto,300); cur.hasUnsub = true; }
+            if(link){ cur.link = cap(link,300); cur.hasUnsub = true; }
+            if(senders.size < 500 || senders.has(em)) senders.set(em, cur);
           }
         }catch(e){
           if(e.message==='reconnect') throw e;   // dead token -> abort loudly
@@ -218,7 +225,7 @@ const Gmail = {
      a sender's header can never dictate the content of what your account sends.
      Cap + pacing are reserved synchronously so concurrent calls can't race past
      them, and sends are serialized through one chain. */
-  async sendRaw(to, subject, body){
+  async _sendRaw(to, subject, body){
     if(sendCount >= SEND_CAP) throw new Error('send limit reached — reopen the app to continue');
     sendCount++;                                        // reserve the slot NOW, before any await
     const run = async ()=>{
@@ -252,9 +259,19 @@ const Gmail = {
      domain? If not, we refuse to email it — that address is either a third-party
      relay or an attacker-planted target, and your account must not send there. */
   _sameOrg(unsubAddr, senderEmail){
-    const reg = (h)=>String(h||'').toLowerCase().split('.').slice(-2).join('.');
-    const da = (String(unsubAddr).split('@')[1]||''), db = (String(senderEmail).split('@')[1]||'');
-    return !!da && !!db && reg(da) === reg(db);
+    const da = (String(unsubAddr||'').split('@')[1]||'').toLowerCase().replace(/\.+$/,'');
+    const db = (String(senderEmail||'').split('@')[1]||'').toLowerCase().replace(/\.+$/,'');
+    if(!da || !db) return false;
+    // Proper registrable-domain compare (handles co.uk, github.io, …). Falls
+    // back to an exact host match if the phish engine isn't loaded.
+    const reg = (window.Phish && Phish.registrable) ? Phish.registrable : (h)=>h;
+    // At a shared mailbox provider, two addresses are two different PEOPLE, so
+    // the domain proves nothing — require the exact same address.
+    const shared = window.Phish && Phish.isPublicMailDomain;
+    if(shared && (shared(da) || shared(db))){
+      return String(unsubAddr).toLowerCase() === String(senderEmail).toLowerCase();
+    }
+    return reg(da) === reg(db);
   },
 
   /* Can we safely one-tap email this sender? (valid on-domain unsubscribe addr) */
@@ -263,13 +280,19 @@ const Gmail = {
     catch(e){ return false; }
   },
 
+  /* The address a send would actually go to — shown in the approval UI so the
+     user is never asked to approve a recipient they cannot see. */
+  targetOf(sender){
+    try{ return this._parseMailto(sender.mailto).addr; }catch(e){ return ''; }
+  },
+
   /* Stop AND erase: unsubscribe + a CCPA/GDPR deletion demand — but ONLY to the
      sender's own domain, and ONLY with our wording. Throws 'offdomain' if the
      unsubscribe address isn't the sender's own (caller falls back to the link). */
   async unsubscribeAndDelete(sender, deletionBody){
     const p = this._parseMailto(sender.mailto);
     if(!this._sameOrg(p.addr, sender.email)) throw new Error('offdomain');
-    return this.sendRaw(p.addr, 'Unsubscribe me and delete my data (CCPA/GDPR)', deletionBody);
+    return this._sendRaw(p.addr, 'Unsubscribe me and delete my data (CCPA/GDPR)', deletionBody);
   }
 };
 

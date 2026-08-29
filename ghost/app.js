@@ -53,7 +53,8 @@ function renderHome(){
     sub:'Unsubscribe and make it stick',
     badge:String(S().ghost.unsubs.filter(u=>u.status!=='done').length), onClick:()=>Nav.go(renderUnsubs)}));
 
-  const pendingScan = (S().ghost.scan?.senders||[]).filter(x=>x.status==='todo').length;
+  const pendingScan = (S().ghost.scan?.senders||[])
+    .filter(x=>x.status==='todo' || x.status==='stillEmailing').length;
   body.appendChild(BigBtn({title:'Scan my inbox for junk',
     sub:'Reads headers only — you approve every send',
     badge: pendingScan ? String(pendingScan) : '', onClick:()=>Nav.go(renderInbox)}));
@@ -359,18 +360,24 @@ function openUnsubLink(link, senderEmail){
 }
 
 async function runBatch(list, label){
-  let sent=0, failed=0, stopped=false;
+  let sent=0, failed=0, stopped=false, lostSave=false;
   for(const snd of list){
     try{
       await Gmail.unsubscribeAndDelete(snd, deletionBody(snd));
       snd.status='sent'; snd.unsubAt=Date.now(); sent++;
+      // Persist after EVERY send: a lock mid-batch must never lose the record
+      // of mail that already went out (or they'd be emailed twice).
+      const ok = await Vault.save();
+      if(ok === false){ lostSave = true; stopped = true; break; }
     }catch(e){
+      if(e.message==='locked'){ stopped=true; break; }
       if(e.message==='reconnect'){ stopped=true; break; }
       failed++;
     }
   }
   Vault.log('Ghost', label+': '+sent+' sent');
   await Vault.save(); Nav.refresh();
+  if(lostSave){ return toast('Sent '+sent+', then the app locked. Unlock and re-check before sending more.'); }
   if(stopped) toast('Sent '+sent+'. Google session ended — reconnect to finish.');
   else if(failed) toast('Sent '+sent+'. '+failed+' could not be sent — try again.');
   else toast(sent+' handled — unsubscribe + deletion demand sent.');
@@ -442,9 +449,10 @@ function renderBatchReview(){
   };
 
   const rows = list.map(snd=>{
+    const target = Gmail.targetOf ? Gmail.targetOf(snd) : '';
     const row = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
       <span class="dot done"></span>
-      <span class="grow"><b>${esc(snd.name)}</b><small>${esc(snd.email)} · ${snd.count} email${snd.count>1?'s':''}</small></span>
+      <span class="grow"><b>${esc(snd.name)}</b><small>${esc(snd.email)} · ${snd.count} email${snd.count>1?'s':''}${target?`<br>sends to: ${esc(target)}`:''}</small></span>
     </button>`);
     row.onclick = ()=>{
       if(sel.has(snd.email)) sel.delete(snd.email); else sel.add(snd.email);
@@ -488,6 +496,7 @@ function senderSheet(snd, offline){
   const s = sheet(snd.name, [
     escalating ? el(`<div class="card"><h3>Ignored your unsubscribe</h3><p style="color:var(--fg)">They emailed you again after you unsubscribed. Re-send the deletion demand, and if it continues, report them (below).</p></div>`) : null,
     el(`<p class="plain">${esc(snd.email)} — ${snd.count} email${snd.count>1?'s':''} in your recent inbox.</p>`),
+    (canEmail && Gmail.targetOf && Gmail.targetOf(snd)) ? el(`<p class="tiny">Your unsubscribe will be sent to: <b>${esc(Gmail.targetOf(snd))}</b></p>`) : null,
     canEmail ? BigBtn({title: escalating?'Re-send unsubscribe + deletion demand':'Unsubscribe + demand deletion', sub:'Stops future mail AND demands they erase your data (CCPA/GDPR)', primary:true, arrow:false, onClick:async ()=>{
       try{
         await Gmail.unsubscribeAndDelete(snd, deletionBody(snd));
@@ -501,7 +510,8 @@ function senderSheet(snd, offline){
     (!snd.mailto && !snd.link) ? el(`<p class="tiny">They offer no unsubscribe channel — that itself violates CAN-SPAM. Mark their emails as spam in Mail, and add them to your junk tracker.</p>`) : null,
     el(`<div class="hr"></div>`),
     BigBtn({title:'Mark as done', arrow:false, onClick:async ()=>{
-      snd.status='sent'; await Vault.save(); s.close(); Nav.refresh();
+      snd.status='sent'; snd.unsubAt = snd.unsubAt || Date.now();   // enables the re-check
+      await Vault.save(); s.close(); Nav.refresh();
     }}),
     BigBtn({title:'Keep this sender — never touch it', sub:'Protected from every send, including batches', arrow:false, onClick:async ()=>{
       snd.status='keep'; await Vault.save(); s.close(); Nav.refresh(); toast('Kept. It can never be included in a send.');

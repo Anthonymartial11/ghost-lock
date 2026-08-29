@@ -57,7 +57,14 @@ async function kvDel(k){
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 const b64 = {
-  to:(buf)=>btoa(String.fromCharCode(...new Uint8Array(buf))),
+  // Chunked: spreading a large byte array into String.fromCharCode blows the
+  // argument limit and throws, which would silently stop the vault saving.
+  to:(buf)=>{
+    const u8 = new Uint8Array(buf);
+    let s = '';
+    for(let i=0;i<u8.length;i+=0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i+0x8000));
+    return btoa(s);
+  },
   from:(s)=>Uint8Array.from(atob(s), c=>c.charCodeAt(0)).buffer
 };
 
@@ -155,10 +162,13 @@ const Vault = {
     this.state = loaded;
   },
 
+  // Returns true if written, false if the app was locked mid-operation.
+  // Callers that must know (batch sends) check the result.
   async save(){
-    if(!this.key) return;               // never write while locked
+    if(!this.key) return false;         // never write while locked
     const blob = await aesEncrypt(this.key, JSON.stringify(this.state));
     await kvSet('data', blob);
+    return true;
   },
 
   lock(){ this.key=null; this.state=null; },

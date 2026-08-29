@@ -40,7 +40,7 @@ iPhones require HTTPS for the vault crypto, Face ID, and Add-to-Home-Screen. Two
 
 Then on the iPhone: open `https://.../ghost/` in Safari → Share → **Add to Home Screen**. Repeat for `/lock/`. On Mac: open in Safari → File → **Add to Dock**.
 
-Both apps on the same domain share one vault: set the password once, turn on Face ID once.
+Each app keeps its own vault (iPhone gives every installed app its own isolated storage), so set the password and Face ID once in Ghost and once in Lock — inside the installed app, not the Safari tab.
 
 ## Files
 

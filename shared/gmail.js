@@ -24,9 +24,12 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send'
 ].join(' ');
 
-let token = null;          // memory only
+let token = null;          // memory only, sealed in this closure
 let tokenExp = 0;          // ms epoch
 let account = '';          // connected email, memory only
+let sendCount = 0;         // per-session cap: no bug can turn Gmail into a cannon
+let lastSendAt = 0;
+const SEND_CAP = 60;
 
 const rndHex = (n)=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>b.toString(16).padStart(2,'0')).join('');
 
@@ -54,11 +57,14 @@ const Gmail = {
       response_type: 'token',
       scope: SCOPES,
       state,
-      include_granted_scopes: 'true',
-      prompt: 'consent'
+      include_granted_scopes: 'true'
     });
     location.href = AUTH_URL + '?' + p.toString();
   },
+
+  /* Wipe the key from memory WITHOUT a network call. Runs every time the app
+     locks, so the Gmail key only exists while the vault is open in front of you. */
+  forget(){ token = null; tokenExp = 0; account = ''; },
 
   /* Called at boot: if Google just sent us back, capture the key and scrub
      the address bar before anything else can see it. */
@@ -100,6 +106,9 @@ const Gmail = {
   _backoff(attempt){ return new Promise(r=>setTimeout(r, 400*Math.pow(2,attempt) + Math.random()*250)); },
 
   async _call(url, opts){
+    // A locked app gets NOTHING: even from a debug console, Gmail can't be used
+    // unless the vault is open (and the raw token is unreadable from outside).
+    if(!(window.Vault && Vault.key)) throw new Error('locked');
     if(!this.connected()){ token=null; tokenExp=0; throw new Error('reconnect'); }
     opts = opts || {};
     opts.headers = Object.assign({}, opts.headers, { Authorization:'Bearer '+token });
@@ -207,6 +216,9 @@ const Gmail = {
   /* Build + send one plain-text email. `to`/`subject` are sanitized to a single
      header line; only a valid single recipient is allowed. */
   async sendRaw(to, subject, body){
+    if(sendCount >= SEND_CAP) throw new Error('send limit reached — reopen the app to continue');
+    const sinceLast = Date.now() - lastSendAt;
+    if(sinceLast < 300) await new Promise(r=>setTimeout(r, 300 - sinceLast));   // pace sends
     const oneLine = (s)=>String(s||'').replace(/[\r\n]+/g,' ').trim();
     const addr = oneLine(to);
     if(!/^[^\s@,<>"]+@[^\s@,<>"]+\.[^\s@,<>"]+$/.test(addr)) throw new Error('unsafe address');
@@ -222,6 +234,7 @@ const Gmail = {
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ raw: b64url })
     });
+    sendCount++; lastSendAt = Date.now();
     return true;
   },
 

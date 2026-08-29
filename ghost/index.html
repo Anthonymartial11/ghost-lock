@@ -5,6 +5,7 @@
 <title>Ghost</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#000000">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://gmail.googleapis.com https://oauth2.googleapis.com https://openidconnect.googleapis.com https://api.pwnedpasswords.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="robots" content="noindex, nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -21,7 +22,7 @@
     <div class="spinner"></div>
   </div>
 </div>
-<script>window.GL_DB='ghostlock-ghost';</script>
+<script src="boot.js"></script>
 <script src="../shared/owner.js"></script>
 <script src="../shared/vault.js"></script>
 <script src="../shared/auth.js"></script>
@@ -33,8 +34,5 @@
 <script src="../shared/gmail-config.js"></script>
 <script src="../shared/gmail.js"></script>
 <script src="app.js"></script>
-<script>
-if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
-</script>
 </body>
 </html>

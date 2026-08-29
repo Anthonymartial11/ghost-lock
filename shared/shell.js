@@ -72,7 +72,9 @@ const Shell = {
   },
 
   // Open an external URL without tripping the auto-lock. Used by app buttons.
+  // Scheme guard: only ordinary web/mail targets, never anything exotic.
   openExternal(url){
+    if(!/^(https?:|mailto:)/i.test(String(url||''))) return;
     this.suppressLock = true;
     window.open(url, '_blank', 'noopener');
     // safety: if we don't actually background within a moment, clear the flag
@@ -85,6 +87,7 @@ const Shell = {
 
   lockNow(silent){
     this.closeSheets();                 // never leave vault content/buttons over the lock screen
+    try{ if(window.Gmail) Gmail.forget(); }catch(e){}   // Gmail key dies with the lock
     if(!Vault.key) return;
     Vault.lock();
     if(!silent) toast('Locked');

@@ -262,6 +262,16 @@ function renderInbox(){
 
 function deletionBody(snd){ return Tools.unsubscribeLetter(snd.name, S().profile); }
 
+/* Opening a sender's unsubscribe page = stepping onto THEIR turf.
+   Show the real domain first and warn: a real unsubscribe never needs a login. */
+function openUnsubLink(link){
+  let host = '';
+  try{ host = new URL(link).hostname; }catch(e){ return; }
+  confirmSheet('Open '+host+'?',
+    'Their unsubscribe page will open. A real unsubscribe never asks for a password or card number — if this one does, close it.',
+    'Open', ()=>Shell.openExternal(link));
+}
+
 async function runBatch(list, label){
   let sent=0, failed=0, stopped=false;
   for(const snd of list){
@@ -398,7 +408,7 @@ function senderSheet(snd, offline){
       }catch(e){ toast(e.message==='reconnect'?'Google session expired — reconnect':'Send failed.'); }
     }}) : null,
     escalating ? BigBtn({title:'Report them (FTC)', sub:'File a spam complaint at reportfraud.ftc.gov', arrow:false, onClick:()=>Shell.openExternal('https://reportfraud.ftc.gov/')}) : null,
-    snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>Shell.openExternal(snd.link)}) : null,
+    snd.link ? BigBtn({title:'Open their unsubscribe page', arrow:false, onClick:()=>{ s.close(); openUnsubLink(snd.link); }}) : null,
     (!snd.mailto && !snd.link) ? el(`<p class="tiny">They offer no unsubscribe channel — that itself violates CAN-SPAM. Mark their emails as spam in Mail, and add them to your junk tracker.</p>`) : null,
     el(`<div class="hr"></div>`),
     BigBtn({title:'Mark as done', arrow:false, onClick:async ()=>{

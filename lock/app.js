@@ -164,6 +164,9 @@ const LISTEN = [
     steps:['Nothing new to do — this is what the microphone audit prevents','Keep Bluetooth off for apps that do not need it: Settings → Privacy & Security → Bluetooth','Turn off Location Services for shopping apps']},
 
   // --- LAYER 5: WHEN IT REALLY MATTERS ---
+  {id:'li_watch', title:'Mac: install Lock Watch (our own detector)', tier:'When it really matters',
+    why:'On a Mac — unlike iPhone — a program CAN see the moment any app starts using the microphone or camera, and name it. Lock Watch sits in your menu bar, alerts you the instant something starts, and keeps a history you can read. It is ours: no third party, no network code in it at all, nothing leaves the machine. It reports USE, not intent — a video call looks the same as spyware — so its value is catching what you did not start.',
+    steps:['Open Terminal','Run: ~/ghost-lock/mac/LockWatch/build.sh','Open “Lock Watch” from Applications','Click the padlock in the menu bar → turn on “Start at login”','Test it: open Voice Memos and press record — the alarm should fire instantly']},
   {id:'li_physical', title:'For conversations that truly matter', tier:'When it really matters',
     why:'Software settings are promises made by companies. Physics is not. For anything genuinely sensitive, remove the device from the room — that is the only guarantee that exists.',
     steps:['Leave the phone in another room — not face down on the table','Airplane Mode does not stop recording, only sending — it is not enough on its own','Powered off is reliable; a Faraday pouch is better if you need certainty','Never rely on an app that claims to "block" the microphone — none can']}

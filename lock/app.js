@@ -100,13 +100,82 @@ const SPAM = [
     steps:['Open the Ghost app','Run “Get me off data-seller sites”','Include your phone number in Ghost’s Settings so the demand letters cover it']}
 ];
 
+/* =============== STOP THE LISTENING =============== */
+/* Layered on purpose. Audio only becomes an ad if it is (1) captured,
+   (2) sent somewhere, and (3) matched to your ad profile. Break any link and
+   the chain fails — so we break all three. */
+const LISTEN = [
+  // --- LAYER 0: EVIDENCE — stop guessing, start seeing ---
+  {id:'li_report', title:'Turn on the receipts (App Privacy Report)', tier:'See what is really happening',
+    why:'Your iPhone can log every single time an app touches the microphone, when it happened, and which servers that app talked to. This turns suspicion into evidence you can read yourself. Leave it running a few days, then look at the Microphone section — anything there that is not a call or voice app is your answer.',
+    steps:['Settings → Privacy & Security','Scroll down → App Privacy Report → Turn On','Come back in 2-3 days','Open it and tap Microphone — check every app listed','Anything suspicious: revoke its mic access (next items)']},
+  {id:'li_dot', title:'Learn the orange dot', tier:'See what is really happening',
+    why:'iOS shows an orange dot at the top of the screen whenever the microphone is live, and green for the camera. There is no way for an app to hide it. If you see orange when nothing should be listening, swipe down from the top-right — Control Centre names the app using it.',
+    steps:['Watch the top-right of the screen','Orange dot = microphone is on RIGHT NOW','Green dot = camera is on','Swipe down from top-right to see which app it is']},
+
+  // --- LAYER 1: KILL THE ALWAYS-ON MICROPHONE ---
+  {id:'li_siri', title:'Turn off "Listen for Siri"', tier:'Kill the always-on mic',
+    why:'This is the real always-on microphone. To catch "Hey Siri" the phone must listen to everything continuously. It misfires often, and each misfire captures a slice of whatever you were saying. Turning it off does not remove Siri — you can still hold the side button when you actually want it.',
+    steps:['Settings → Apps → Siri','Talk to Siri → set to "Off" (or "Press Side Button" only)','Turn OFF "Allow Siri When Locked"','On Mac: System Settings → Apple Intelligence & Siri → turn off "Listen for"']},
+  {id:'li_dictation', title:'Turn off Dictation', tier:'Kill the always-on mic',
+    why:'The microphone key on your keyboard sends audio to Apple to transcribe. Most people never use it and never realise it is enabled.',
+    steps:['Settings → General → Keyboard','Turn OFF "Enable Dictation"','Confirm when it asks','Mac: System Settings → Keyboard → Dictation → Off']},
+  {id:'li_assistant', title:'Kill "Hey Google" and Assistant voice history', tier:'Kill the always-on mic',
+    why:'Google Assistant runs the same always-listening wake-word loop, and by default keeps the recordings. This is the one with the biggest ad machine behind it.',
+    url:'https://myactivity.google.com/product/voice',
+    steps:['Open the Google app → your picture → Settings → Google Assistant','Hey Google & Voice Match → turn OFF','Then open myactivity.google.com/product/voice','Delete all voice recordings','Turn OFF "Include audio and video recordings"']},
+  {id:'li_alexa', title:'Mute or purge Alexa', tier:'Kill the always-on mic',
+    why:'Smart speakers are microphones you paid for and pointed at your own sofa. If you keep one, at least stop it storing what it hears.',
+    url:'https://www.amazon.com/alexaprivacysettings',
+    steps:['Press the physical mute button on the device when not in use','Alexa app → More → Alexa Privacy → Review Voice History → Delete All','Manage Your Alexa Data → turn OFF "Save Voice Recordings"','Turn OFF "Use of Voice Recordings to Improve Alexa"']},
+
+  // --- LAYER 2: REVOKE THE MICROPHONE, APP BY APP ---
+  {id:'li_perms', title:'Revoke microphone access — the big one', tier:'Take the mic away',
+    why:'This is the single most effective action on this list. An app cannot listen if the system will not give it the microphone. Be ruthless: social apps, shopping apps, games, news, weather and flashlight apps do NOT need your microphone. If one breaks later, it will ask again and you can decide then.',
+    steps:['Settings → Privacy & Security → Microphone','Turn OFF every app that is not a phone, video-call, voice-memo or music app','Do the same under Speech Recognition','Mac: System Settings → Privacy & Security → Microphone — same rule','Recheck monthly: app updates re-ask for permission']},
+  {id:'li_camera', title:'Audit camera and screen recording too', tier:'Take the mic away',
+    why:'While you are in there. Researchers have caught apps recording the SCREEN and sending it — that was found far more often than secret audio.',
+    steps:['Settings → Privacy & Security → Camera → cut anything unnecessary','Mac: Privacy & Security → Camera, Screen & System Audio Recording','Remove anything you do not recognise']},
+  {id:'li_browser', title:'Stop websites asking for your mic', tier:'Take the mic away',
+    why:'A web page can request the microphone too. Set Safari to refuse by default.',
+    steps:['Settings → Apps → Safari → scroll to Settings for Websites','Microphone → set to "Deny"','Camera → set to "Deny"','Mac Safari: Settings → Websites → Microphone → When visiting other websites: Deny']},
+
+  // --- LAYER 3: CUT THE PATH FROM AUDIO TO AD ---
+  {id:'li_att', title:'Block cross-app tracking', tier:'Cut the path to the advert',
+    why:'Even if something captures audio, it is worthless to an advertiser unless it can be tied to YOU across apps. This switch cuts that link at the system level.',
+    steps:['Settings → Privacy & Security → Tracking','Turn OFF "Allow Apps to Request to Track"','This retroactively denies every app that already asked']},
+  {id:'li_adid', title:'Turn off personalised ads everywhere', tier:'Cut the path to the advert',
+    why:'The ad profile is the thing that turns any signal — audio, location, browsing — into a targeted advert. No profile, no targeting.',
+    url:'https://myadcenter.google.com/',
+    steps:['Settings → Privacy & Security → Apple Advertising → Personalized Ads OFF','myadcenter.google.com → Personalized ads OFF','Ghost → Cut Big Tech down → do the Meta "off-Meta activity" item','Amazon: amazon.com/adprefs → opt out']},
+  {id:'li_dns', title:'Block the analytics servers themselves', tier:'Cut the path to the advert',
+    why:'Captured data has to reach a server to matter. The whole-device shield refuses to look up the addresses of known ad and analytics companies, so the data has nowhere to go — in every app, not just the browser.',
+    steps:['Go back and open "Block ads, trackers & bad sites"','Install the shield','Test it']},
+  {id:'li_relay', title:'Hide your IP from trackers', tier:'Cut the path to the advert',
+    why:'Your IP address is how companies link you to the people around you — the reason an ad follows a conversation you had near someone else. Hiding it breaks that link.',
+    steps:['Settings → your name → iCloud → Private Relay → ON (needs iCloud+)','Settings → Apps → Safari → Hide IP Address → "From Trackers and Websites"','No iCloud+? Use a reputable paid VPN, never a free one']},
+
+  // --- LAYER 4: THE OTHER MICROPHONES IN YOUR HOUSE ---
+  {id:'li_tv', title:'Your TV is watching and listening', tier:'The other microphones',
+    why:'Smart TVs run Automatic Content Recognition — they sample what is on screen (and on some sets, room audio via the voice remote) and sell viewing data to advertisers. Vizio was fined by the FTC for exactly this. This is a genuine, documented source of "how did they know" adverts.',
+    steps:['Samsung: Settings → Terms & Privacy → turn off Viewing Information Services','LG: Settings → General → Live Plus → OFF, and turn off ad personalisation','Vizio: Settings → System → Reset & Admin → Viewing Data → OFF','Roku/Fire TV: Settings → Privacy → turn off ACR and ad tracking','Take the batteries out of a voice remote you never use']},
+  {id:'li_ultrasonic', title:'Ultrasonic beacons — why the mic audit matters', tier:'The other microphones',
+    why:'Some adverts and shop displays emit tones too high for you to hear, which a phone app with microphone access can detect to link your devices and confirm you saw an advert. It is not a theory — the FTC warned companies over it. The defence is simply that no app has your microphone, which you just fixed.',
+    steps:['Nothing new to do — this is what the microphone audit prevents','Keep Bluetooth off for apps that do not need it: Settings → Privacy & Security → Bluetooth','Turn off Location Services for shopping apps']},
+
+  // --- LAYER 5: WHEN IT REALLY MATTERS ---
+  {id:'li_physical', title:'For conversations that truly matter', tier:'When it really matters',
+    why:'Software settings are promises made by companies. Physics is not. For anything genuinely sensitive, remove the device from the room — that is the only guarantee that exists.',
+    steps:['Leave the phone in another room — not face down on the table','Airplane Mode does not stop recording, only sending — it is not enough on its own','Powered off is reliable; a Faraday pouch is better if you need certainty','Never rely on an app that claims to "block" the microphone — none can']}
+];
+
 /* =============== helpers =============== */
 function ckDone(id){ return !!S().lock.checklist[id]; }
 function listDone(list){ return list.filter(i=>ckDone(i.id)).length; }
 function shieldsUp(){
-  return (S().lock.dnsDone?1:0) + listDone(IPHONE) + listDone(MAC) + listDone(BROWSE) + listDone(SPAM);
+  return (S().lock.dnsDone?1:0) + listDone(IPHONE) + listDone(MAC) + listDone(BROWSE) + listDone(SPAM) + listDone(LISTEN);
 }
-function shieldsTotal(){ return 1 + IPHONE.length + MAC.length + BROWSE.length + SPAM.length; }
+function shieldsTotal(){ return 1 + IPHONE.length + MAC.length + BROWSE.length + SPAM.length + LISTEN.length; }
 
 /* =============== HOME =============== */
 function renderHome(){
@@ -140,6 +209,10 @@ function renderHome(){
   body.appendChild(BigBtn({title:'Stop spam calls & texts',
     badge:`${listDone(SPAM)}/${SPAM.length}`, onClick:()=>Nav.go(()=>renderChecklist('Stop spam calls & texts', SPAM,
       'Two different problems, two different fixes. An <b>unknown</b> caller is just someone not in your contacts — could be your doctor. A <b>spam</b> caller is a confirmed bad number. These steps <b>screen</b> the unknowns so real people still reach you, and <b>block</b> the known spam outright.'))}));
+
+  body.appendChild(BigBtn({title:'Stop the listening',
+    sub:'Microphones, ad targeting, and the path between them',
+    badge:`${listDone(LISTEN)}/${LISTEN.length}`, onClick:()=>Nav.go(renderListen)}));
 
   body.appendChild(BigBtn({title:'Harden my iPhone',
     badge:`${listDone(IPHONE)}/${IPHONE.length}`, onClick:()=>Nav.go(()=>renderChecklist('Harden my iPhone', IPHONE))}));
@@ -299,6 +372,31 @@ function downloadProfile(mode){
   a.download = encrypted ? 'Lock-DNS-Shield.mobileconfig' : 'Lock-DNS-Shield-Standard.mobileconfig';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
+}
+
+
+function renderListen(){
+  const nodes = [
+    el(`<div class="card"><h3>How this actually works</h3>
+      <p style="color:var(--fg)">Audio only becomes an advert if three things happen: it is <b>captured</b>, it is <b>sent somewhere</b>, and it is <b>matched to your ad profile</b>. Break any one link and the chain fails. This list breaks all three.</p>
+      <p style="color:var(--fg)">Start with the receipts — before changing anything, turn on the App Privacy Report so you can see for yourself which apps touch your microphone.</p></div>`)
+  ];
+  const tiers = [...new Set(LISTEN.map(x=>x.tier))];
+  for(const t of tiers){
+    const items = LISTEN.filter(x=>x.tier===t);
+    nodes.push(el(`<div class="hr"></div>`));
+    nodes.push(el(`<p class="sub"><b>${esc(t)}</b> — ${items.filter(i=>ckDone(i.id)).length} of ${items.length} done</p>`));
+    for(const item of items){
+      const done = ckDone(item.id);
+      const node = el(`<button class="item" style="width:100%;cursor:pointer;text-align:left">
+        <span class="dot ${done?'done':''}"></span>
+        <span class="grow"><b>${esc(item.title)}</b><small>${done?'Done ✓':'Tap for steps'}</small></span>
+        <span class="arrow">›</span></button>`);
+      node.onclick = ()=>checkSheet(item, 'Stop the listening', LISTEN);
+      nodes.push(node);
+    }
+  }
+  return Screen('Stop the listening', nodes);
 }
 
 /* =============== EMERGENCY: I CLICKED SOMETHING BAD =============== */

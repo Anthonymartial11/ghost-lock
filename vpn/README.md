@@ -48,9 +48,20 @@ A cheap Linux server (a "VPS") running Ubuntu 22.04/24.04 or Debian 12.
 
 | Option | Cost | Notes |
 |---|---|---|
-| Hetzner | ~€4/mo | Cheapest reliable, EU + US locations |
-| Vultr / DigitalOcean | ~$5–6/mo | Many cities |
-| Oracle Cloud "Always Free" | £0 | Genuinely free forever, but signup is fiddly and idle instances can be reclaimed |
+| **Vultr** | **$3.50/mo** | Cheapest with a real IPv4. US cities incl. close to you. Recommended. |
+| AWS Lightsail | $5/mo | 1 TB transfer, very reliable |
+| DigitalOcean | $6/mo | 1 TB transfer, easiest console |
+| Hetzner | €5.99/mo EU | Cheap in Europe only — the US plan jumped to €17.49/mo in June 2026 |
+| ~~Oracle "Always Free"~~ | £0 | **Do not use for this.** See below. |
+
+**Why not Oracle's free tier** (verified August 2026): Oracle explicitly reserves
+the right to reclaim *idle* instances — and a personal VPN server meets their
+definition of idle, so it can be deleted under you. They halved the free ARM
+allowance in June 2026 with no announcement and deleted over-limit instances,
+and they have a documented pattern of terminating free accounts with no warning
+or appeal. They also paid **$115M** in 2025 to settle a class action over
+covertly building profiles on ~220 million people. Wrong landlord for a privacy
+tool.
 
 Pick a location **away from your home city** — that is the point.
 Add your SSH key during signup so you can log in without a password.
@@ -106,13 +117,53 @@ Add more devices later:
 - **SSH** — keys only, no passwords, no root password login, 3 tries.
 - **unattended-upgrades** — security patches apply themselves.
 
-## Honest limits
+## Honest limits — read before you rely on this
 
-- Your **VPS provider** can still see traffic at their edge and knows who you
-  are from payment. You have swapped a VPN company for a hosting company — but
-  one that has no idea what you are doing and no reason to profile you.
-- A **unique exit IP** is a tracking identifier (see the table above).
-- If the server is compromised, the tunnel is compromised. Patches are automatic
-  for this reason.
-- Your keys are in `~/GhostTunnel/`. **Those files are the tunnel.** Anyone with
-  them can connect as you. Keep them private; delete stray copies.
+**1. Your anonymity set is one.** Anonymity means being indistinguishable inside
+a crowd. A crowd of one is not weak anonymity, it is *zero* anonymity. A
+commercial VPN's shared exit IP hides your activity *patterns*, not just your
+address. Your own server converts a rotating home IP into a **permanent, globally
+unique identifier rented in your name**. For defeating ad-tracking, that is worse
+than what you have now. This is not a nitpick — the leading self-hosting tool's
+own authors disclaim anonymity as a goal.
+
+**2. The hosting provider sits on both sides.** They carry your outbound traffic
+(destination IPs, the site names inside TLS) *and* know the tunnel's other end —
+your home IP. And virtualisation means they can snapshot both the disk **and the
+RAM** of your server from the hypervisor; that is standard forensic procedure,
+not a hypothetical. So the "logs in RAM only" hardening in this build raises the
+bar, but it does **not** make the box unreadable the way it would on hardware you
+physically own. A commercial VPN's business model is adversarial to disclosure;
+a hosting company's is not — they have no reason to fight for you.
+
+**3. WireGuard itself keeps two things.** By design the server holds your current
+endpoint (your home IP) and last-handshake time in kernel memory, and the config
+on disk maps your public key to a fixed tunnel address. WireGuard's own
+documentation lists the seized-server case as a known limitation. There is no
+setting that removes this.
+
+**4. A datacenter IP is flagged as an anonymiser by default**, purely for being
+in a hosting range — providers publish those ranges, so it is trivial to detect.
+Expect some sites to challenge you. (Upside: with only you on the IP, you will
+generally get *fewer* CAPTCHAs than on a busy commercial VPN, and banks tend to
+behave better.)
+
+**5. One server pins you to one country.** No location switching.
+
+**6. Your keys are in `~/GhostTunnel/`.** Those files *are* the tunnel. Anyone
+holding them can connect as you. Keep them private and delete stray copies.
+
+---
+
+## So what should you actually use?
+
+Match the tool to the threat — this is the practitioner consensus, not a fudge:
+
+- **Hostile Wi-Fi (cafe, hotel, airport) and hiding from your ISP** →
+  **Ghost Tunnel.** This is the clearest, least-disputed win, and it removes the
+  VPN company as someone you must trust.
+- **Defeating ad-tracking / blending into a crowd** → a commercial VPN, or
+  better, fix it at the source with Ghost's *Cut Big Tech down* and Lock's
+  tracker blocking. IP is only one signal; logging into Google beats any VPN.
+- **Genuine anonymity** → **Tor Browser.** Nothing else qualifies. Both kinds of
+  VPN are the wrong tool and the reputable privacy projects say so plainly.

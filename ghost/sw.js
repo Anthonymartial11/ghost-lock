@@ -1,5 +1,5 @@
 /* Ghost service worker — makes the app load instantly and work offline. */
-const CACHE = 'ghost-v14';
+const CACHE = 'ghost-v15';
 const ASSETS = [
   'index.html','app.js','boot.js','manifest.webmanifest',
   '../shared/base.css','../shared/owner.js','../shared/vault.js','../shared/auth.js','../shared/ui.js',

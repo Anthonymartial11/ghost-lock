@@ -184,9 +184,7 @@ function shieldsTotal(){ return 1 + IPHONE.length + MAC.length + BROWSE.length +
 function renderHome(){
   const up = shieldsUp(), total = shieldsTotal();
   const scr = Screen('Lock', [], {back:false});
-  const sw = el(`<button class="switch">Ghost ›</button>`);
-  sw.onclick = ()=>{ location.href = '../ghost/'; };
-  scr.querySelector('.bar').appendChild(sw);
+  scr.querySelector('.bar').appendChild(Shell.switchPill('Ghost', '../ghost/'));
   const body = scr.lastElementChild;
 
   body.appendChild(el(`
@@ -227,6 +225,8 @@ function renderHome(){
     badge:`${listDone(BROWSE)}/${BROWSE.length}`, onClick:()=>Nav.go(()=>renderChecklist('Browse unseen', BROWSE))}));
 
   body.appendChild(BigBtn({title:'Settings', onClick:()=>Shell.openSettings()}));
+  body.appendChild(el(`<div class="hr"></div>`));
+  body.appendChild(Shell.switchTile('Ghost', '../ghost/', 'Clean up the past — erase your footprint'));
   return scr;
 }
 

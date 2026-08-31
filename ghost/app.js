@@ -30,9 +30,7 @@ function shieldOn(){ try{ return localStorage.getItem('gl_shield')==='1'; }catch
 function renderHome(){
   const c = counts();
   const scr = Screen('Ghost', [], {back:false});
-  const sw = el(`<button class="switch">Lock ›</button>`);
-  sw.onclick = ()=>{ location.href = '../lock/'; };
-  scr.querySelector('.bar').appendChild(sw);
+  scr.querySelector('.bar').appendChild(Shell.switchPill('Lock', '../lock/'));
   const body = scr.lastElementChild;
 
   body.appendChild(el(`
@@ -74,6 +72,8 @@ function renderHome(){
 
   body.appendChild(BigBtn({title:'Activity log', onClick:()=>Nav.go(renderLog)}));
   body.appendChild(BigBtn({title:'Settings', onClick:()=>Shell.openSettings()}));
+  body.appendChild(el(`<div class="hr"></div>`));
+  body.appendChild(Shell.switchTile('Lock', '../lock/', 'Protect the present — block what’s coming'));
   return scr;
 }
 

@@ -82,6 +82,49 @@ const Shell = {
     window.open(url, '_blank', 'noopener');
   },
 
+
+  /* ---------------- switching between Ghost and Lock ----------------
+     On iPhone, an installed web app cannot launch ANOTHER installed web app —
+     iOS provides no way to do it. Worse, navigating out of our scope opens the
+     other app inside THIS one's browser view, with a different storage box, so
+     it looks brand new and asks to be set up. That is a trap, so in an
+     installed app we explain instead of navigating. In a normal browser tab the
+     link works fine, so we just go. */
+  isInstalled(){
+    try{
+      return (window.matchMedia && matchMedia('(display-mode: standalone)').matches)
+             || window.navigator.standalone === true;
+    }catch(e){ return false; }
+  },
+
+  goSibling(name, url){
+    if(!this.isInstalled()){ location.href = url; return; }
+    const isPhone = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    sheet('Switch to ' + name, [
+      el(`<p class="plain"><b>${esc(name)}</b> is its own app with its own icon \u2014 they are deliberately separate so a problem in one can never reach the other.</p>`),
+      isPhone
+        ? el(`<p class="plain"><b>Fastest way:</b> swipe up from the bottom of the screen and hold, then pick ${esc(name)}. Or tap its icon on your Home Screen.</p>`)
+        : el(`<p class="plain"><b>Fastest way:</b> use the Dock, or \u2318\u21E5 (Command\u2013Tab) and pick ${esc(name)}.</p>`),
+      el(`<div class="card"><h3>Don\u2019t open it in here</h3>
+        <p style="color:var(--fg)">If you open ${esc(name)} inside this app it loads in a browser window with separate storage \u2014 it will look empty and ask you to set it up again. Always use its own icon.</p></div>`),
+      BigBtn({title:'Got it', primary:true, arrow:false, onClick:()=>Shell.closeSheets()}),
+      BigBtn({title:'Open it here anyway', sub:'Only if ' + esc(name) + ' is not installed on this device', arrow:false, onClick:()=>{ Shell.closeSheets(); location.href = url; }})
+    ]);
+  },
+
+  /* Top-bar pill. */
+  switchPill(name, url){
+    const b = el(`<button class="switch">${esc(name)} \u203A</button>`);
+    b.onclick = ()=> this.goSibling(name, url);
+    return b;
+  },
+
+  /* Big, thumb-reachable version for the bottom of the home screen — the top
+     corner is hard to reach one-handed on a large phone. */
+  switchTile(name, url, blurb){
+    return BigBtn({title:'Open ' + name, sub: blurb, onClick:()=> this.goSibling(name, url)});
+  },
+
   closeSheets(){
     document.querySelectorAll('.sheet, .sheet-bg').forEach(n=>n.remove());
   },

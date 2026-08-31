@@ -38,6 +38,14 @@ async function guardClear(){ await kvDel('guard'); }
 /* The owner code is a per-DEVICE check, not a per-launch one. Once any part
    of the system (front page or either app) has verified it on this device,
    no screen here asks again. */
+/* How long the app may stay unlocked after it leaves the screen.
+   0 = lock instantly (safest). Stored per-device; not secret. */
+function lockDelayMs(){
+  try{ const v = parseInt(localStorage.getItem('gl_lock_delay')||'0',10); return isNaN(v)?0:v; }
+  catch(e){ return 0; }
+}
+function setLockDelay(ms){ try{ localStorage.setItem('gl_lock_delay', String(ms)); }catch(e){} }
+
 function ownerRemembered(){ try{ return localStorage.getItem('gl_owner_ok')==='1'; }catch(e){ return false; } }
 function ownerDisabled(){ try{ return localStorage.getItem('gl_owner_off')==='1'; }catch(e){ return false; } }
 function setOwnerDisabled(v){ try{ v ? localStorage.setItem('gl_owner_off','1') : localStorage.removeItem('gl_owner_off'); }catch(e){} }
@@ -65,9 +73,22 @@ const Shell = {
     // Face ID tap, and a backgrounded-but-unlocked app is exactly what a thief
     // (or anyone who picks up the phone) needs.
     document.addEventListener('visibilitychange', ()=>{
-      if(!document.hidden) return;
-      this.hideCount++;
-      this.lockNow(true);
+      if(document.hidden){
+        this.hideCount++;
+        this.closeSheets();                    // never leave content on screen
+        const grace = lockDelayMs();
+        if(grace <= 0){ this.lockNow(true); return; }
+        // Grace period: stay unlocked briefly so hopping to the other app (or
+        // opening a link) doesn't force a re-unlock. We record WHEN we left —
+        // a background timer can't be trusted on iOS, so we check on return.
+        this._hiddenAt = Date.now();
+        this._graceTimer = setTimeout(()=>this.lockNow(true), grace);
+      } else {
+        clearTimeout(this._graceTimer);
+        const grace = lockDelayMs();
+        if(this._hiddenAt && (grace <= 0 || Date.now() - this._hiddenAt > grace)) this.lockNow(true);
+        this._hiddenAt = 0;
+      }
     });
     window.addEventListener('pagehide', ()=>{ this.hideCount++; this.lockNow(true); });
 
@@ -275,9 +296,15 @@ const Shell = {
     nodes.push(pw, pwBtn, usePw);
     const scr = Screen(this.cfg.name, nodes, {back:false});
 
-    Bio.isEnabled().then(on=>{
-      if(on){ scr.querySelector('#faceBtn').style.display='flex'; }
-      else { usePw.style.display='none'; pw.style.display='block'; pwBtn.style.display='flex'; }
+    Bio.isEnabled().then(async on=>{
+      if(on){ scr.querySelector('#faceBtn').style.display='flex'; return; }
+      usePw.style.display='none'; pw.style.display='block'; pwBtn.style.display='flex';
+      // Face ID turns every unlock into one tap — the real fix for re-unlocking
+      // when you switch apps. Offer it if the device supports it.
+      if(await Bio.platformAvailable()){
+        const tip = el(`<p class="center-note">Tip: turn on Face ID in Settings — unlocking becomes one tap.</p>`);
+        scr.lastElementChild.appendChild(tip);
+      }
     });
 
     // live countdown while timed out (Face ID stays available — it can't be guessed)
@@ -371,6 +398,22 @@ const Shell = {
         }}));
       });
       nodes.push(faceRow);
+
+      // ---- how quickly it locks ----
+      nodes.push(el(`<div class="hr"></div>`));
+      nodes.push(el(`<p class="sub">Locking when you leave the app</p>`));
+      const DELAYS = [[0,'Instantly','Safest. You unlock every time you come back.'],
+                      [60000,'After 1 minute','Hop to the other app and back without unlocking.'],
+                      [300000,'After 5 minutes','Most convenient. Least safe if the phone is taken.']];
+      const cur = lockDelayMs();
+      for(const [ms,label,blurb] of DELAYS){
+        const on = cur === ms;
+        const b = BigBtn({title:(on?'\u2713 ':'')+label, sub:blurb, arrow:false, onClick:()=>{
+          setLockDelay(ms); toast('Saved.'); Nav.refresh();
+        }});
+        nodes.push(b);
+      }
+      nodes.push(el(`<p class="tiny">While the app is waiting to lock, its contents stay decrypted in memory \u2014 that is the trade. Anything above "Instantly" means someone who picks up your unlocked phone within that window gets in. Face ID makes "Instantly" almost painless.</p>`));
 
       // ---- backup ----
       nodes.push(el(`<div class="hr"></div>`));

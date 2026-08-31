@@ -149,6 +149,44 @@ const Vault = {
     return crypto.subtle.exportKey('raw', key);
   },
 
+
+  /* ---- Backup / restore -------------------------------------------------
+     The export is the ENCRYPTED vault, byte for byte. It cannot be read
+     without your password, so it is safe to store in iCloud, Files, or on a
+     USB stick. This exists because phones evict web-app storage: without a
+     backup, an eviction is permanent data loss. */
+  async exportBackup(){
+    const meta = await kvGet('meta');
+    const data = await kvGet('data');
+    if(!meta) throw new Error('nothing to back up');
+    return JSON.stringify({
+      format:'ghostlock-backup', v:1, app: DB_NAME,
+      exported: new Date().toISOString(), meta, data: data || null
+    }, null, 1);
+  },
+
+  /* Restores an encrypted backup. Does NOT unlock it — you still need the
+     password the backup was made with. */
+  async importBackup(text){
+    let obj;
+    try{ obj = JSON.parse(text); }catch(e){ throw new Error('That file is not a backup.'); }
+    if(!obj || obj.format !== 'ghostlock-backup' || !obj.meta || !obj.meta.salt || !obj.meta.verifier){
+      throw new Error('That file is not a Ghost/Lock backup.');
+    }
+    await kvSet('meta', obj.meta);
+    if(obj.data) await kvSet('data', obj.data); else await kvDel('data');
+    await kvDel('bio');      // the old device's Face ID wrap is meaningless here
+    await kvDel('guard');
+    this.lock();
+    return true;
+  },
+
+  /* Has the browser promised not to evict our storage? */
+  async storageIsPersistent(){
+    try{ return !!(navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()); }
+    catch(e){ return false; }
+  },
+
   async load(){
     const blob = await kvGet('data');
     if(!blob){ this.state = freshState(); return; }

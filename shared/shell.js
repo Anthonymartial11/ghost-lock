@@ -39,6 +39,8 @@ async function guardClear(){ await kvDel('guard'); }
    of the system (front page or either app) has verified it on this device,
    no screen here asks again. */
 function ownerRemembered(){ try{ return localStorage.getItem('gl_owner_ok')==='1'; }catch(e){ return false; } }
+function ownerDisabled(){ try{ return localStorage.getItem('gl_owner_off')==='1'; }catch(e){ return false; } }
+function setOwnerDisabled(v){ try{ v ? localStorage.setItem('gl_owner_off','1') : localStorage.removeItem('gl_owner_off'); }catch(e){} }
 function rememberOwner(){ try{ localStorage.setItem('gl_owner_ok','1'); localStorage.setItem('gl_gate','1'); }catch(e){} }
 function fmtLeft(ms){
   const s = Math.ceil(ms/1000);
@@ -95,7 +97,7 @@ const Shell = {
 
   /* ---------------- SETUP (first run on a device) ---------------- */
   showSetup(){
-    const needCode = !!(window.OWNER && window.OWNER.hashHex) && !ownerRemembered();
+    const needCode = !!(window.OWNER && window.OWNER.hashHex) && !ownerRemembered() && !ownerDisabled();
     Nav.reset(()=>{
       const oc = el(`<input type="password" placeholder="Owner code" autocomplete="off" autocapitalize="characters">`);
       const p1 = el(`<input type="password" placeholder="Make a password" autocomplete="new-password">`);
@@ -142,8 +144,36 @@ const Shell = {
         nodes.push(el(`<label>Owner code — proves this app is yours</label>`), oc);
         nodes.push(el(`<label>Your password</label>`));
       }
-      nodes.push(p1, p2, create,
-        el(`<p class="center-note">Use a phrase you'll remember — the longer, the stronger.<br>There is no "forgot password". That is what keeps it safe.</p>`));
+      nodes.push(p1, p2, create);
+
+      // Restoring an encrypted backup needs NO owner code — the backup is
+      // useless without the password it was made with, so the code adds nothing
+      // here and would only lock the owner out of their own data.
+      const restore = el(`<input type="file" accept=".json,application/json" style="display:none">`);
+      restore.addEventListener('change', async ()=>{
+        const f = restore.files && restore.files[0]; if(!f) return;
+        try{
+          await Vault.importBackup(await f.text());
+          toast('Backup restored. Unlock with that backup\u2019s password.');
+          this.showUnlock();
+        }catch(e){ toast(e.message || 'Could not read that backup.'); }
+        finally{ try{ restore.value=''; }catch(e){} }
+      });
+      nodes.push(el(`<div class="hr"></div>`));
+      nodes.push(BigBtn({title:'Restore from a backup', sub:'Been here before? Bring your data back. No owner code needed.', arrow:false, onClick:()=>restore.click()}));
+      nodes.push(restore);
+
+      if(needCode){
+        nodes.push(BigBtn({title:'I don\u2019t have my owner code', arrow:false, onClick:()=>{
+          sheet('Where your owner code lives', [
+            el(`<p class="plain">The owner code is only asked when setting this app up on a device for the first time. It is <b>not</b> what protects your data \u2014 your password does that.</p>`),
+            el(`<p class="plain">You were given it when these apps were built, and it is written in the project notes on your Mac:</p>`),
+            el(`<p class="plain mono" style="font-size:15px">~/ghost-lock/OWNER-CODE.txt</p>`),
+            el(`<p class="plain">Once you are in, you can switch the code off entirely from <b>Settings</b> so this never blocks you again.</p>`)
+          ]);
+        }}));
+      }
+      nodes.push(el(`<p class="center-note">Use a phrase you'll remember — the longer, the stronger.<br>There is no "forgot password". That is what keeps it safe.</p>`));
       return Screen(this.cfg.name, nodes, {back:false});
     });
   },
@@ -299,6 +329,61 @@ const Shell = {
       });
       nodes.push(faceRow);
 
+      // ---- backup ----
+      nodes.push(el(`<div class="hr"></div>`));
+      nodes.push(el(`<p class="sub">Your data lives only on this device. Phones sometimes clear web-app storage \u2014 a backup is the only protection against that.</p>`));
+
+      const persistNote = el(`<p class="tiny"></p>`);
+      Vault.storageIsPersistent().then(p=>{
+        persistNote.textContent = p
+          ? 'This device has agreed to keep your data (storage marked persistent).'
+          : 'Warning: this device has NOT guaranteed to keep your data. Back up now, and keep the file.';
+      });
+      nodes.push(persistNote);
+
+      nodes.push(BigBtn({title:'Back up my data', sub:'Encrypted file \u2014 useless without your password', arrow:false, onClick:async ()=>{
+        try{
+          const text = await Vault.exportBackup();
+          const name = (window.GL_DB||'ghostlock') + '-backup-' + new Date().toISOString().slice(0,10) + '.json';
+          const blob = new Blob([text], {type:'application/json'});
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob); a.download = name;
+          document.body.appendChild(a); a.click();
+          setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+          toast('Backup saved. Keep it somewhere safe.');
+        }catch(e){ toast('Could not create a backup.'); }
+      }}));
+
+      const restoreS = el(`<input type="file" accept=".json,application/json" style="display:none">`);
+      restoreS.addEventListener('change', async ()=>{
+        const f = restoreS.files && restoreS.files[0]; if(!f) return;
+        const txt = await f.text();
+        confirmSheet('Replace everything on this device?',
+          'This overwrites this app\u2019s current data with the backup. You will need the password that backup was made with.',
+          'Restore', async ()=>{
+            try{ await Vault.importBackup(txt); toast('Restored. Unlock with that backup\u2019s password.'); location.reload(); }
+            catch(e){ toast(e.message || 'Could not read that backup.'); }
+          });
+        try{ restoreS.value=''; }catch(e){}
+      });
+      nodes.push(BigBtn({title:'Restore from a backup', arrow:false, onClick:()=>restoreS.click()}));
+      nodes.push(restoreS);
+
+      // ---- owner code switch ----
+      if(window.OWNER && window.OWNER.hashHex){
+        const offNow = ownerDisabled();
+        nodes.push(el(`<div class="hr"></div>`));
+        nodes.push(BigBtn({title: offNow ? 'Owner code: OFF \u2014 turn back on' : 'Owner code: ON \u2014 turn off',
+          sub: offNow ? 'Setup on this device will not ask for it' : 'Stops it ever locking you out of your own app',
+          arrow:false, onClick:()=>{
+            if(offNow){ setOwnerDisabled(false); toast('Owner code back on.'); Nav.refresh(); }
+            else confirmSheet('Turn the owner code off?',
+              'It only gates first-time setup and can be bypassed by a technical attacker anyway \u2014 your password is what actually protects your data. Turning it off means you can never be locked out by a lost code.',
+              'Turn it off', ()=>{ setOwnerDisabled(true); toast('Owner code off.'); Nav.refresh(); });
+          }}));
+      }
+
+      nodes.push(el(`<div class="hr"></div>`));
       nodes.push(BigBtn({title:'Lock now', arrow:false, onClick:()=>Shell.lockNow()}));
       nodes.push(el(`<div class="hr"></div>`));
       nodes.push(BigBtn({title:'Erase everything', sub:'Wipes this app from this device', arrow:false, onClick:()=>{

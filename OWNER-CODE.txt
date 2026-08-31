@@ -1,0 +1,23 @@
+GHOST + LOCK — OWNER CODE
+=========================
+
+    GHOST-FV6G-FARP-6ZYA
+
+What it is:
+  Asked ONCE per device, only when setting Ghost or Lock up for the first time,
+  and on the front page. It is a deterrent against someone who stumbles on the
+  URL — nothing more.
+
+What it is NOT:
+  It is not what protects your data. Your PASSWORD does that (AES-256 with
+  600,000-round key stretching). A technical attacker can bypass this code
+  because the check runs in the browser; the security audit confirmed that.
+
+Because of that:
+  - Restoring a backup NEVER asks for it.
+  - You can switch it off entirely: open Ghost or Lock -> Settings -> "Owner
+    code: ON — turn off". Do that if it ever gets in your way again.
+
+To change it:
+  python3 ~/ghost-lock/tools/set-owner-code.py --random
+  (then redeploy: git -C ~/ghost-lock push)

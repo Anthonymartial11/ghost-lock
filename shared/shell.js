@@ -375,6 +375,8 @@ const Shell = {
     pw.addEventListener('keydown', e=>{ if(e.key==='Enter') go.click(); });
     const s = sheet('Confirm your password', [
       el(`<p class="plain">For your security, confirm your password to turn on Face ID unlock.</p>`),
+      el(`<div class="card"><h3>Already set this up in the other app?</h3>
+        <p style="color:var(--fg)">Your face is shared between Ghost and Lock, so pick the existing <b>Ghost + Lock</b> passkey when asked — no second setup needed. If you have not set it up anywhere yet, cancel that first prompt and one will be created.</p></div>`),
       pw, go
     ]);
   },
@@ -413,7 +415,9 @@ const Shell = {
         }});
         nodes.push(b);
       }
-      nodes.push(el(`<p class="tiny">While the app is waiting to lock, its contents stay decrypted in memory \u2014 that is the trade. Anything above "Instantly" means someone who picks up your unlocked phone within that window gets in. Face ID makes "Instantly" almost painless.</p>`));
+      nodes.push(el(`<div class="card"><h3>Best of both</h3>
+        <p style="color:var(--fg)">Keep this on <b>Instantly</b> and turn on <b>Face ID</b>. Switching apps then costs one glance, nothing is ever left decrypted in the background, and every entry needs your face. That is faster than typing AND safer than any delay.</p>
+        <p style="color:var(--fg)">Use a delay only if Face ID is unavailable. While the app waits to lock, its contents stay decrypted in memory \u2014 anyone who picks up the phone inside that window is in.</p></div>`));
 
       // ---- backup ----
       nodes.push(el(`<div class="hr"></div>`));

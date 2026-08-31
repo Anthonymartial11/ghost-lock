@@ -1,5 +1,5 @@
 /* Lock service worker — instant loads, works offline. */
-const CACHE = 'lock-v14';
+const CACHE = 'lock-v15';
 const ASSETS = [
   'index.html','app.js','boot.js','manifest.webmanifest',
   '../shared/base.css','../shared/owner.js','../shared/vault.js','../shared/auth.js','../shared/ui.js',

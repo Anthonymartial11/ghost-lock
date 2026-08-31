@@ -37,6 +37,34 @@ const Bio = {
     const prfSalt = crypto.getRandomValues(new Uint8Array(32));
     const userId  = crypto.getRandomValues(new Uint8Array(16));
 
+    // ---- Reuse the passkey the sibling app already made, if there is one ----
+    // A passkey is scoped to the DOMAIN, not the folder, so the one enrolled in
+    // Ghost is usable by Lock and vice versa. Reusing it means you set Face ID
+    // up ONCE for both apps.
+    // Security note: each app still uses its OWN random PRF salt, so each app
+    // derives a DIFFERENT wrapping key. One face, but two independent locks —
+    // the vaults stay cryptographically separate.
+    try{
+      const found = await navigator.credentials.get({ publicKey:{
+        rpId: RP_ID,
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        userVerification: 'required',
+        timeout: 60000,
+        extensions:{ prf:{ eval:{ first: prfSalt } } }
+      }});
+      const fx = found && found.getClientExtensionResults().prf;
+      if(fx && fx.results && fx.results.first){
+        const wrapKey0 = await this._wrapKeyFrom(fx.results.first);
+        const iv0 = crypto.getRandomValues(new Uint8Array(12));
+        const wrapped0 = await crypto.subtle.encrypt({name:'AES-GCM',iv:iv0}, wrapKey0, rawVaultKey);
+        await kvSet('bio', {
+          credId: b.to(found.rawId), prfSalt: b.to(prfSalt),
+          iv: b.to(iv0), wrapped: b.to(wrapped0), reused: true
+        });
+        return true;                       // done — no second passkey created
+      }
+    }catch(e){ /* nothing to reuse, or the user dismissed it — enrol fresh below */ }
+
     const cred = await navigator.credentials.create({ publicKey:{
       rp:{ id:RP_ID, name:'Ghost + Lock' },
       user:{ id:userId, name:'you@device', displayName:'You' },
